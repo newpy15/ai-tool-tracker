@@ -1,8 +1,25 @@
+<div align="center">
+
+**English** · [한국어](README.ko.md)
+
 # ai-tool-tracker
 
-**한국어 설명서: [README.ko.md](README.ko.md)**
+### See which tools made it. Find the ones you need. Switch off the ones you don't.
 
-**A side panel for Claude Code. It shows, in real time, which plugins and skills you use while you work, and suggests tools for requests like "make me a video". Plugins you don't use can be switched off with a button.**
+**A side panel for Claude Code that shows, in real time, which plugins and skills you use, suggests tools for what you want to build, and lets you turn plugins off with a button.**
+
+[![MIT license](https://img.shields.io/github/license/newpy15/ai-tool-tracker?style=flat-square)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/newpy15/ai-tool-tracker?style=flat-square)](https://github.com/newpy15/ai-tool-tracker/commits/main)
+[![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-5c4ee5?style=flat-square)](#quick-start)
+
+[Quick start](#quick-start) · [How it works](#how-it-works) · [What you can see](#what-you-can-see) · [Can I trust the suggested links?](#can-i-trust-the-suggested-links) · [Cautions](#cautions) · [FAQ](#when-something-goes-wrong) · [Contributing](#contributing)
+
+</div>
+
+> [!IMPORTANT]
+> The official source is [newpy15/ai-tool-tracker](https://github.com/newpy15/ai-tool-tracker). A similar repository name or a copied README does not make a download official. Check the owner before you install anything, which is the same advice this plugin gives for every suggestion it shows.
+
+---
 
 ## Why I made it
 
@@ -24,26 +41,15 @@ So I built a panel that "shows the tools you used, helps you find the ones you n
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
 - **Tests**: the safety rules have their own test file (7 tests) and were checked against all 3,700+ entries of the real directory.
 
-## What does it do?
+## Quick start
 
-The panel has four tabs.
-
-| Tab | What it does |
-| --- | --- |
-| **Tools** | Shows the **plugins** and **skills** installed on your PC with descriptions. Plugins can be turned on and off, and clicking a name expands the skills, agents and MCP servers inside it. For skills it also shows how to call them with `/name`. |
-| **Live log** | Stacks the tools used while you work (skills, plugins, file edits, commands, subagents and so on) in time order, grouped by kind, with a one-line description of "what this tool is for". |
-| **Suggestions** | When you say something like "make a video and a pdf", it recognizes the topic (video, documents, ...) and shows matching tools per topic. It searches the plugin directory stored on your PC first, and when you press a button it searches GitHub live for more. |
-| **Environment** | Language choice, what it read on your PC ("Detected environment"), translation progress, removing old cached versions, and moving tools that only work in one folder to global. |
-
-## Install
-
-In Claude Code in a terminal:
+Install it in Claude Code in a terminal:
 
 ```
 /plugin install ai-tool-tracker --marketplace newpy15/ai-tool-tracker
 ```
 
-In a shell (Command Prompt, PowerShell and so on):
+Or in a shell (Command Prompt, PowerShell and so on):
 
 ```
 claude plugin install ai-tool-tracker --marketplace newpy15/ai-tool-tracker
@@ -55,7 +61,26 @@ claude plugin install ai-tool-tracker --marketplace newpy15/ai-tool-tracker
 - Right after installing you may see a note that "1 setting (language) is not set yet". It works with the default (Korean), so you can leave it, and you can change the language later in the **Environment** tab of the panel.
 - It becomes active as soon as it is installed. If you don't see the panel, type `/ai-tools` in the input box. If it still doesn't show up, quit Claude Code completely and start it again.
 
-## Your first 5 minutes
+### Say what you want to build
+
+```text
+Make a video and a pdf for me.
+```
+
+The panel notices the topics (video, documents) and lists matching tools in the **Suggestions** tab. Replace the sentence with what you want to build.
+
+### Commands
+
+| Input | What it does |
+| --- | --- |
+| `/ai-tools` | Opens the panel and re-reads the installed tools. Type it once after installing or removing a plugin. |
+| `/ai-find video production` | Finds tools for the feature you want. It searches both the directory on your PC and GitHub, and the results appear in the **Suggestions** tab. With several topics (`video pdf`) it shows each topic separately. |
+| `/ai-log image-tool logo draft` | Records a tool you used outside Claude Code by hand. (Tools used outside cannot be detected automatically.) |
+
+- If you say something with a topic in it during a normal conversation, like "make me a video" or "make a pdf", a notification appears and results pile up in the **Suggestions** tab. This reads only the directory on your PC. The same topic is announced at most once every 10 minutes, and nothing is announced if you already have everything that matched.
+- **Suggestions never install anything for you.** They only copy an install command. Every item shows its source tier and owner, so read "Can I trust the suggested links?" below and check the code and permissions yourself before installing.
+
+### Your first 5 minutes
 
 1. **Install**: install it as described above.
 2. **Open the panel**: the panel opens automatically when you start. If you don't see it, type `/ai-tools`.
@@ -63,7 +88,7 @@ claude plugin install ai-tool-tracker --marketplace newpy15/ai-tool-tracker
 4. **Work as usual**: while you work, open the **Live log** tab to see the tools that were just used, stacked by kind.
 5. **Find tools**: say what you want to build (`make me a video`), or type `/ai-find video production`, then look at the **Suggestions** tab.
 
-## When you want to...
+### When you want to...
 
 | What you want to do | How |
 | --- | --- |
@@ -75,16 +100,97 @@ claude plugin install ai-tool-tracker --marketplace newpy15/ai-tool-tracker
 | The list didn't change after installing or removing a plugin | `/ai-tools` |
 | Record a tool you used outside Claude Code | `/ai-log tool-name what-you-did` |
 
-## Commands
+## How it works
 
-| Input | What it does |
+ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches** what Claude Code does, keeps a short record, and **draws** a panel. It never changes what Claude does: its hooks always pass the call or the prompt on unchanged, and if the plugin itself fails, Claude Code carries on as if it were not there.
+
+```text
+  Claude Code
+  ┌────────────────────────────────────────────────────────────┐
+  │  you type a request ───► prompt.submit ──┐                 │
+  │  Claude uses a tool ───► tool.call ──────┼──► panel state  │
+  │  you type /ai-tools … ─► command.run ────┘        │        │
+  └───────────────────────────────────────────────────┼────────┘
+                                                      ▼
+   read only                                   ┌─────────────┐
+   ~/.claude: installed plugins, skills,  ───► │  ui.render  │ ───► the panel (4 tabs)
+   settings, plugin directory cache            └─────────────┘
+                                                      ▲
+   only when you press a button or type /ai-find      │
+   one search word ───► api.github.com ───► trust check ──► Suggestions
+```
+
+### The pieces
+
+| Piece | File | What it does |
+| --- | --- | --- |
+| Hooks module | `hooks/register.tsx` | Registers the hooks below, reads your installed tools, draws the panel and runs the buttons. |
+| Trust rules | `hooks/trust.ts` | Pure functions that clean text written by other people, make safe names, commands and links, decide the source tier, and raise caution flags. No Claude Code needed to test them. |
+| State types | `types/index.d.ts` | The shape of what the panel keeps (log, tabs, suggestions). |
+| Tests | `test/trust.test.mjs` | The safety rules, run with `node --test test/`. |
+| Install files | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | What `claude plugin install … --marketplace newpy15/ai-tool-tracker` reads. |
+
+### What each hook does
+
+| Hook | When it runs | What it does | Passes the call on unchanged? |
+| --- | --- | --- | --- |
+| `session.start` | Claude Code starts | Registers `/ai-tools`, `/ai-find`, `/ai-log`, opens the panel, reads your installed plugins and skills, and starts any translation that is missing. | – |
+| `prompt.submit` | You send a message | Looks for topic words from a built-in dictionary (14 topics, at most 3 per message) and searches the local directory. **The text itself is not kept.** | Yes |
+| `tool.call` | Claude uses a tool or skill | Records the tool's name and a short detail in the log (for example a file name, a command description or a search word). Reading and searching tools such as `Read` and `Grep` are not recorded. | Yes |
+| `command.run` | You type one of the three commands | Re-reads the tools, searches directory and GitHub, or adds a hand-made log entry. | – |
+| `ui.render` | The panel needs drawing | Draws the four tabs from the saved state. If drawing fails it shows an error line instead of a blank panel. | – |
+
+### Where the information comes from
+
+- **Installed tools**: the plugins' own files in Claude's config folder (`installed_plugins.json`, each `SKILL.md` header, `plugin.json`, agent and MCP files) and your `settings.json` for what is switched on. Nothing is guessed.
+- **Descriptions**: taken from each tool's own description. For a dozen popular tools (such as Remotion, Figma and Notion) there is also a short hand-written description in the log.
+- **Suggestions**: the plugin directory file stored on your PC and the marketplaces you added, plus GitHub search when you ask for it.
+- **Translations**: the Korean and English screens are written by hand. Other languages are translated once by a model (the lowest tier), checked (right alphabet, placeholders intact), and saved together with the English original, so a changed sentence is translated again and an unchanged one never is.
+
+### How one suggestion is made
+
+1. A topic is recognized from a dictionary (for example "video", "pdf", "slides").
+2. The directory on your PC and the marketplaces you added are searched. Results are ranked by how well they match, with a small bonus for a more verified source.
+3. Only if you press the button (or type `/ai-find`), GitHub is searched by topic (`claude-code-plugin`, `claude-skills`, `claude-code`) and the results are merged. Only one search word is sent.
+4. Every result goes through the trust check (below): its source tier, owner and caution flags are decided, and its link and install command are rebuilt from verified parts.
+5. The Suggestions tab shows the result. Nothing is installed.
+
+### What is kept, and where
+
+- **The log and the panel's state** (which tab is open, the last suggestions) live in Claude Code's session state for this plugin. They are never sent anywhere.
+- **Translations** are cached across sessions so they are not repeated.
+- **Your files change only through buttons you press.** Switching plugins on or off and installing use the `claude` command. "Move to global" copies a folder-only skill into `~/.claude/skills` (or a session-only mod into `~/.claude/local-mods`), and "Remove old cache" and "Delete original" delete folders, each after a confirmation.
+
+## What you can see
+
+The panel has four tabs.
+
+| Tab | What it does |
 | --- | --- |
-| `/ai-tools` | Opens the panel and re-reads the installed tools. Type it once after installing or removing a plugin. |
-| `/ai-find video production` | Finds tools for the feature you want. It searches both the directory on your PC and GitHub, and the results appear in the **Suggestions** tab. With several topics (`video pdf`) it shows each topic separately. |
-| `/ai-log image-tool logo draft` | Records a tool you used outside Claude Code by hand. (Tools used outside cannot be detected automatically.) |
+| **Tools** | Shows the **plugins** and **skills** installed on your PC with descriptions. Plugins can be turned on and off, and clicking a name expands the skills, agents and MCP servers inside it. For skills it also shows how to call them with `/name`. |
+| **Live log** | Stacks the tools used while you work (skills, plugins, file edits, commands, subagents and so on) in time order, grouped by kind, with a one-line description of "what this tool is for". |
+| **Suggestions** | When you say something like "make a video and a pdf", it recognizes the topic (video, documents, ...) and shows matching tools per topic. It searches the plugin directory stored on your PC first, and when you press a button it searches GitHub live for more. |
+| **Environment** | Language choice, what it read on your PC ("Detected environment"), translation progress, removing old cached versions, and moving tools that only work in one folder to global. |
 
-- If you say something with a topic in it during a normal conversation, like "make me a video" or "make a pdf", a notification appears and results pile up in the **Suggestions** tab. This reads only the directory on your PC. The same topic is announced at most once every 10 minutes, and nothing is announced if you already have everything that matched.
-- **Suggestions never install anything for you.** They only copy an install command. Every item shows its source tier and owner, so read "Can I trust the suggested links?" below and check the code and permissions yourself before installing.
+### Example: "make a video and a pdf"
+
+What the **Suggestions** tab lists, in two groups (an illustration computed with the same ranking rules from the plugin directory on the author's PC on 2026-11-16; it is not an endorsement, and anything you already have installed is tagged `installed`):
+
+```text
+Video  (search: video, remotion, animation, motion)
+  Remotion                              [Listed in directory · not reviewed]  Owner: remotion-dev
+  AI Video Editor & Timeline            [Listed in directory · not reviewed]  Owner: clipwave-io
+  video-shotcraft                       [Listed in directory · not reviewed]  Owner: vincentwei1021
+  Motion Reel                           [Listed in directory · not reviewed]  Owner: aries-spring
+
+Documents  (search: pdf, docx, xlsx)
+  PDF Viewer                            [Reviewed by Anthropic]               Owner: anthropics
+  DevExpress Office & PDF File API      [Reviewed (partner)]                  Owner: devexpress
+  carbone-skill                         [Official marketplace]                Owner: carboneio
+  Pdf To Excel                          [Listed in directory · not reviewed]  Owner: cavada76
+```
+
+Each row also has the description, caution flags, an `Open link` button and a `Copy install command` button that shows the exact command.
 
 ## Can I trust the suggested links?
 
@@ -172,12 +278,22 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 - **MCP server**: a tool that connects to an outside service (Notion, Figma and so on).
 - **Hook**: code that runs automatically when something happens. It keeps running while it is on, so switching it off has the biggest effect.
 
-## Reporting bugs and suggesting improvements
+## Disclaimer
 
-Please post them in [Issues](https://github.com/newpy15/ai-tool-tracker/issues). Forms are ready.
+This is an independent project. It is not affiliated with or endorsed by Anthropic. Suggestions are a convenience, not a recommendation or a guarantee, and the author takes no responsibility for what you install. The software is provided as is, under the MIT license.
 
-- Bugs: pasting the "Detected environment" text from the panel's **Environment** tab makes the cause easier to find. (Please hide any path that contains your user name.)
-- Suggestions: an example such as "when I say this, I'd like this tool to be suggested" helps even more.
+## Contributing
+
+Bug reports, ideas and small, focused pull requests are welcome. Before you open a pull request, run the checks:
+
+```
+node --test test/
+claude plugin validate .
+```
+
+- **Bugs and ideas**: post them in [Issues](https://github.com/newpy15/ai-tool-tracker/issues). Forms are ready. For a bug, pasting the "Detected environment" text from the panel's **Environment** tab makes the cause easier to find (please hide any path that contains your user name). For an idea, an example such as "when I say this, I'd like this tool to be suggested" helps even more.
+- **Security**: if you find a way to make the plugin build an unsafe link or command, please open an Issue titled `[Security]` without the exploit details and I will follow up.
+- **Rules**: anything that handles text written by other people belongs in `hooks/trust.ts` with a test in `test/trust.test.mjs`.
 
 ## License
 
