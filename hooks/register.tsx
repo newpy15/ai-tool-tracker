@@ -11,7 +11,7 @@ import { categorize, CATEGORY_ORDER } from './categories'
 import type { CatKey } from './categories'
 import {
   addUsage, AGENT_CATS, buildSpec, catOfType, cfgOf, cycle, DEFAULT_SETTINGS, fmtTokens, isOver, MODEL_PRESETS,
-  modelLabel, parseModel, parseSettings, parseTokens, parseTurns, PLUGIN_ID, tokensOf,
+  modelLabel, changeModel, fit, limitsOf, parseModel, parseSettings, parseTokens, parseTurns, PLUGIN_ID, tokensOf,
 } from './agents'
 import type { AgentSettings, AgentUse } from './agents'
 
@@ -227,7 +227,8 @@ const UI = {
     agHint: '켜면 영상·개발 같은 묶음마다 전용 하위 에이전트가 생기고, 그 일은 정해 둔 모델과 토큰 한도 안에서 맡습니다. 에이전트 목록이 매 턴 조금 늘어나므로 기본은 꺼져 있습니다. 바꾸면 다음 턴부터 적용됩니다. 값은 입력칸에 쓰고 Enter를 누르세요.',
     agModel: '모델',
     agModelCustom: '모델 ID 직접 입력:',
-    agBudgetEx: '예: 150k, 1.5m, 0=제한 없음',
+    agRange: (min: string, max: string) => `${min} ~ ${max} (예: 150k)`,
+    agAdjusted: (min: string, max: string, v: string) => `이 모델에서 허용하는 범위(${min} ~ ${max})를 벗어나 ${v}(으)로 맞췄습니다.`,
     agBad: '알아볼 수 없는 값입니다. 입력한 그대로는 저장하지 않았습니다.',
     agBudget: '토큰 한도',
     agTurns: '최대 턴',
@@ -238,7 +239,7 @@ const UI = {
       `${label} 묶음이 토큰 한도(${budget})에 닿아(${used}) 새 하위 에이전트를 시작하지 않았습니다. 환경 탭에서 한도를 올릴 수 있습니다.`,
     agNone: '분업할 수 있는 묶음이 아직 없습니다. 도구 탭에서 플러그인이 용도별로 묶이면 여기에 나옵니다.',
     agLine: (model: string, budget: string, used: string) => `하위 에이전트: ${model} · 한도 ${budget} · 사용 ${used}`,
-    agLimitNote: '한도는 새 하위 에이전트를 시작할 때 확인합니다. 이미 도는 중인 것을 중간에 끊지는 않고, 한 번의 길이는 "최대 턴"으로 막습니다.',
+    agLimitNote: '한도는 새 하위 에이전트를 시작할 때 확인합니다. 이미 도는 중인 것을 중간에 끊지는 않고, 한 번의 길이는 "최대 턴"으로 막습니다. 하위 에이전트는 시작만 해도 약 6만 토큰이 들어서, 한도는 모델마다 정한 범위(최소 10만) 안에서만 받습니다. 비싼 모델일수록 최대가 낮습니다.',
     tabReco: (n: number) => (n > 0 ? `추천 (${n})` : '추천'),
     recoTitle: '이런 도구는 어때요?',
     recoNone: '아직 추천할 내용이 없습니다. "동영상 만들어줘"처럼 요청하거나 /ai-find 동영상 제작 처럼 검색해 보세요.',
@@ -406,7 +407,8 @@ const UI = {
     agHint: 'When on, each group such as Video or Dev gets its own sub-agent that does that work on the model and token budget you set. It adds a little to the agent list every turn, so it is off by default. Changes apply from the next turn. Type a value in a field and press Enter.',
     agModel: 'Model',
     agModelCustom: 'Custom model ID:',
-    agBudgetEx: 'e.g. 150k, 1.5m, 0 = no limit',
+    agRange: (min: string, max: string) => `${min} to ${max} (e.g. 150k)`,
+    agAdjusted: (min: string, max: string, v: string) => `Outside the range this model allows (${min} to ${max}), so it was set to ${v}.`,
     agBad: 'That value could not be read, so it was not saved.',
     agBudget: 'Token budget',
     agTurns: 'Max turns',
@@ -417,7 +419,7 @@ const UI = {
       `The ${label} group reached its token budget (${budget}, used ${used}), so no new sub-agent was started. You can raise the budget in the Environment tab.`,
     agNone: 'No groups to hand work to yet. They appear here once plugins are grouped by purpose in the Tools tab.',
     agLine: (model: string, budget: string, used: string) => `Sub-agent: ${model} · budget ${budget} · used ${used}`,
-    agLimitNote: 'The budget is checked when a new sub-agent starts. A running one is not cut off midway; its length is limited by "Max turns".',
+    agLimitNote: 'The budget is checked when a new sub-agent starts. A running one is not cut off midway; its length is limited by "Max turns". A sub-agent uses about 60k tokens just to start, so budgets are accepted only within a range set per model (at least 100k); pricier models have a lower maximum.',
     tabReco: (n: number) => (n > 0 ? `Suggestions (${n})` : 'Suggestions'),
     recoTitle: 'How about these tools?',
     recoNone: 'Nothing to suggest yet. Ask for something like "make a video", or search with /ai-find video.',
@@ -2296,8 +2298,16 @@ export const register: Register = (on, options) => {
         {agCfg.on &&
           AGENT_CATS.filter(c => membersOf(idx, c).length > 0).map(cat => {
             const cfg = cfgOf(agCfg, cat)
-            const put = (patch: Partial<typeof cfg>) =>
-              void saveAgents($, { ...agCfg, cats: { ...agCfg.cats, [cat]: { ...cfg, ...patch } } })
+            const lim = limitsOf(cfg.model)
+            const store = (next: typeof cfg) =>
+              void saveAgents($, { ...agCfg, cats: { ...agCfg.cats, [cat]: next } })
+            const put = (patch: Partial<typeof cfg>) => store({ ...cfg, ...patch })
+            const setModel = (m: string) => store(changeModel(cfg, m))
+            const putNum = (key: 'budget' | 'maxTurns', n: number, r: { min: number; max: number }) => {
+              const f = fit(n, r as any)
+              put({ [key]: f.value })
+              if (f.adjusted) $.ui.toast(ui().agAdjusted(fmtTokens(r.min), fmtTokens(r.max), fmtTokens(f.value)))
+            }
             return (
               <Box flexDirection="column" marginTop={1}>
                 <Text bold>
@@ -2308,7 +2318,7 @@ export const register: Register = (on, options) => {
                   <Button
                     key={`ag-model-${cat}`}
                     label={modelText(cfg.model)}
-                    onPress={() => put({ model: cycle(MODEL_PRESETS, cfg.model) })}
+                    onPress={() => setModel(cycle(MODEL_PRESETS, cfg.model))}
                   />
                 </Box>
                 <Box paddingLeft={2}>
@@ -2319,8 +2329,8 @@ export const register: Register = (on, options) => {
                     value={MODEL_PRESETS.includes(cfg.model) ? '' : cfg.model}
                     onSubmit={(v: string) => {
                       const m = parseModel(v)
-                      if (m) put({ model: m })
-                      else if (v.trim() === '') put({ model: 'inherit' })
+                      if (m) setModel(m)
+                      else if (v.trim() === '') setModel('inherit')
                       else $.ui.toast(ui().agBad)
                     }}
                   />
@@ -2329,12 +2339,12 @@ export const register: Register = (on, options) => {
                   <Input
                     key={`ag-budget-in-${cat}`}
                     label={`${ui().agBudget} `}
-                    placeholder={ui().agBudgetEx}
+                    placeholder={ui().agRange(fmtTokens(lim.budget.min), fmtTokens(lim.budget.max))}
                     value={String(cfg.budget)}
                     onSubmit={(v: string) => {
                       const n = parseTokens(v)
                       if (n === undefined) $.ui.toast(ui().agBad)
-                      else put({ budget: n })
+                      else putNum('budget', n, lim.budget)
                     }}
                   />
                 </Box>
@@ -2342,12 +2352,12 @@ export const register: Register = (on, options) => {
                   <Input
                     key={`ag-turns-in-${cat}`}
                     label={`${ui().agTurns} `}
-                    placeholder="1-200"
+                    placeholder={ui().agRange(String(lim.turns.min), String(lim.turns.max))}
                     value={String(cfg.maxTurns)}
                     onSubmit={(v: string) => {
                       const n = parseTurns(v)
                       if (n === undefined) $.ui.toast(ui().agBad)
-                      else put({ maxTurns: n })
+                      else putNum('maxTurns', n, lim.turns)
                     }}
                   />
                 </Box>

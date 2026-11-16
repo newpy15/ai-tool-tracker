@@ -109,3 +109,39 @@ test('modelLabel: 아는 ID는 이름으로, 모르면 그대로', () => {
   assert.equal(m.modelLabel('claude-opus-5-5'), 'Opus 5.5')
   assert.equal(m.modelLabel('claude-opus-9-9'), 'claude-opus-9-9')
 })
+
+test('limitsOf: 모든 범위에서 최소 한도는 한 번 실행(약 6만)보다 크고 기본값은 범위 안', () => {
+  for (const mo of ['inherit', 'haiku', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-2', 'weird-model']) {
+    const l = m.limitsOf(mo)
+    for (const r of [l.budget, l.turns]) assert.ok(r.min <= r.def && r.def <= r.max, mo)
+    assert.ok(l.budget.min >= 100_000, mo)
+  }
+  assert.deepEqual(m.limitsOf('inherit').budget.def, m.DEFAULT_CFG.budget)
+  assert.equal(m.limitsOf('inherit').turns.def, m.DEFAULT_CFG.maxTurns)
+  assert.ok(m.limitsOf('claude-opus-5-5').budget.max < m.limitsOf('haiku').budget.max)
+})
+
+test('fit: 범위 밖은 끌어들이고 바뀌었다고 알린다', () => {
+  const r = m.limitsOf('haiku').budget
+  assert.deepEqual(m.fit(0, r), { value: 100_000, adjusted: true })
+  assert.deepEqual(m.fit(9e9, r), { value: 3_000_000, adjusted: true })
+  assert.deepEqual(m.fit(500_000, r), { value: 500_000, adjusted: false })
+})
+
+test('changeModel: 기본값 그대로면 새 기본값으로, 직접 정한 값은 범위 안이면 유지', () => {
+  const a = m.changeModel(m.DEFAULT_CFG, 'claude-opus-5-5')
+  assert.deepEqual(a, { model: 'claude-opus-5-5', budget: 150_000, maxTurns: 15 })
+  const mine = { model: 'haiku', budget: 700_000, maxTurns: 50 }
+  const b = m.changeModel(mine, 'sonnet')
+  assert.equal(b.budget, 700_000)
+  assert.equal(b.maxTurns, 50) // 소넷은 최대 60턴이라 직접 정한 50은 유지
+  const c = m.changeModel(mine, 'claude-opus-5-5') // 700k는 오퍼스 범위(최대 1M) 안, 50턴은 최대 40 밖
+  assert.equal(c.budget, 700_000)
+  assert.equal(c.maxTurns, 15)
+})
+
+test('parseSettings: 모델마다 범위를 적용한다 (0과 너무 작은 값은 기본값)', () => {
+  const s = m.parseSettings({ on: true, cats: { dev: { model: 'haiku', budget: 0, maxTurns: 1 }, video: { model: 'opus', budget: 400_000, maxTurns: 30 } } })
+  assert.deepEqual(s.cats.dev, { model: 'haiku', budget: 300_000, maxTurns: 25 })
+  assert.deepEqual(s.cats.video, { model: 'opus', budget: 400_000, maxTurns: 30 })
+})

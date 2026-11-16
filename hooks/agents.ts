@@ -25,6 +25,38 @@ export const modelLabel = (m: string): string => MODEL_LABELS[m] ?? m
 export const MAX_BUDGET = 100_000_000
 export const MAX_TURNS = 200
 
+export type Range = { min: number; def: number; max: number }
+export type Limits = { budget: Range; turns: Range }
+/**
+ * 모델마다 정한 기본값·최소·최대. 하위 에이전트는 시작만 해도 약 6만 토큰(기본 지침과 도구 목록)이 들기 때문에
+ * 최소 한도는 10만 토큰으로 두어 한 번 실행에 한도가 바닥나지 않게 한다. 비싼 모델일수록 최대를 낮게 잡는다.
+ * 0(제한 없음)은 받지 않는다.
+ */
+export const limitsOf = (model: string): Limits => {
+  const m = model.toLowerCase()
+  if (m.includes('haiku')) return { budget: { min: 100_000, def: 300_000, max: 3_000_000 }, turns: { min: 3, def: 25, max: 100 } }
+  if (m.includes('sonnet')) return { budget: { min: 100_000, def: 200_000, max: 2_000_000 }, turns: { min: 3, def: 20, max: 60 } }
+  if (m.includes('opus') || m.includes('fable'))
+    return { budget: { min: 100_000, def: 150_000, max: 1_000_000 }, turns: { min: 3, def: 15, max: 40 } }
+  // 현재 모델 그대로(inherit)이거나 모르는 모델: 가장 조심스러운 범위
+  return { budget: { min: 100_000, def: 200_000, max: 1_000_000 }, turns: { min: 3, def: 20, max: 40 } }
+}
+
+/** 범위 안으로 맞춘다. 맞추느라 바뀌었으면 adjusted */
+export const fit = (n: number, r: Range): { value: number; adjusted: boolean } => {
+  const value = Math.min(r.max, Math.max(r.min, n))
+  return { value, adjusted: value !== n }
+}
+
+/** 모델을 바꾼다. 한도·턴이 이전 모델의 기본값이었거나 새 범위를 벗어나면 새 모델의 기본값으로, 아니면 그대로 둔다 */
+export const changeModel = (cfg: AgentCfg, model: string): AgentCfg => {
+  const was = limitsOf(cfg.model)
+  const now = limitsOf(model)
+  const pick = (cur: number, oldR: Range, newR: Range) =>
+    cur === oldR.def || cur < newR.min || cur > newR.max ? newR.def : cur
+  return { model, budget: pick(cfg.budget, was.budget, now.budget), maxTurns: pick(cfg.maxTurns, was.turns, now.turns) }
+}
+
 /** 모델 ID로 써도 안전한 글자만: 아니면 undefined */
 export const parseModel = (t: unknown): string | undefined => {
   const s = (typeof t === 'string' ? t : '').trim()
@@ -51,7 +83,7 @@ export type AgentCfg = { model: AgentModel; budget: number; maxTurns: number }
 export type AgentSettings = { on: boolean; cats: Partial<Record<CatKey, AgentCfg>> }
 export type AgentUse = Record<string, { runs: number; tokens: number }>
 
-export const DEFAULT_CFG: AgentCfg = { model: 'inherit', budget: 200_000, maxTurns: 20 }
+export const DEFAULT_CFG: AgentCfg = { model: 'inherit', budget: 200_000, maxTurns: 20 } // limitsOf('inherit')의 기본값과 같다(시험이 확인)
 export const DEFAULT_SETTINGS: AgentSettings = { on: false, cats: {} }
 export const PLUGIN_ID = 'ai-tool-tracker'
 
@@ -76,11 +108,13 @@ export const parseSettings = (raw: unknown): AgentSettings => {
   for (const k of Object.keys(src)) {
     if (!isCat(k)) continue
     const c = src[k] ?? {}
+    const model = parseModel(c.model) ?? DEFAULT_CFG.model
+    const lim = limitsOf(model)
+    const ok = (v: unknown, r: Range) => Number.isInteger(v) && (v as number) >= r.min && (v as number) <= r.max
     cats[k] = {
-      model: parseModel(c.model) ?? DEFAULT_CFG.model,
-      budget: Number.isInteger(c.budget) && c.budget >= 0 && c.budget <= MAX_BUDGET ? c.budget : DEFAULT_CFG.budget,
-      maxTurns:
-        Number.isInteger(c.maxTurns) && c.maxTurns >= 1 && c.maxTurns <= MAX_TURNS ? c.maxTurns : DEFAULT_CFG.maxTurns,
+      model,
+      budget: ok(c.budget, lim.budget) ? c.budget : lim.budget.def,
+      maxTurns: ok(c.maxTurns, lim.turns) ? c.maxTurns : lim.turns.def,
     }
   }
   return { on: r.on === true, cats }

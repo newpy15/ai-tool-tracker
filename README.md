@@ -39,7 +39,7 @@ So I built a panel that "shows the tools you used, helps you find the ones you n
 - **Tokens**: no model is used to scan files. A model is used only for translation (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (37 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (41 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -239,7 +239,7 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 - **"Move to global" is a copy.** The original stays, and deleting the original is a separate confirmation. If you edit the original after copying, the copy is not updated automatically.
 - **Suggestions do not guarantee safety.** Before installing, check that the owner is right, and read the repository code and the permissions it asks for.
 - **Be careful with `Turn off`.** If you switch off a plugin you are using, that feature is gone from the next start. Press `Turn on` to bring it back.
-- **Division of work is off by default.** Turning it on adds one line per group to the agent list the model reads every turn (a small token cost). The token budget is checked when a new sub-agent starts; one that is already running is not cut off, its length is limited by "Max turns". Usage is counted for this session only, and only from the sub-agents this plugin defines.
+- **Division of work is off by default.** Turning it on adds one line per group to the agent list the model reads every turn (a small token cost). Each model has its own default, minimum and maximum for the budget and max turns (the budget is at least 100k, because a sub-agent uses about 60k tokens just to start; pricier models have a lower maximum; "no limit" is not allowed), so one run cannot use up the whole budget. The token budget is checked when a new sub-agent starts; one that is already running is not cut off, its length is limited by "Max turns". Usage is counted for this session only, and only from the sub-agents this plugin defines.
 - **`Turn all off` and `Turn this group off` ask for confirmation first**, never switch off this plugin itself, and take effect the next time Claude Code starts. Turning plugins back on works the same way.
 - **Stars measure popularity, not quality.** Star counts can be inflated, and a popular tool can still be the wrong one for you. Read the description and check the owner. A repository with few stars is not necessarily bad, it just has little evidence behind it.
 - Turning on and off, moving, and install-related features use the `claude` command. They may fail where this command is missing (for example if you only use the desktop app). "Detected environment" in the Environment tab shows whether it is available.
