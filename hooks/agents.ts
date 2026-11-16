@@ -81,11 +81,16 @@ export const parseTurns = (t: unknown): number | undefined => {
 }
 
 export type AgentCfg = { model: AgentModel; budget: number; maxTurns: number }
-export type AgentSettings = { on: boolean; cats: Partial<Record<CatKey, AgentCfg>> }
+export type AgentSettings = { on: boolean; guard: number; cats: Partial<Record<CatKey, AgentCfg>> }
 export type AgentUse = Record<string, { runs: number; tokens: number }>
 
 export const DEFAULT_CFG: AgentCfg = { model: 'inherit', budget: 100_000, maxTurns: 10 } // limitsOf('inherit')의 기본값과 같다(시험이 확인)
-export const DEFAULT_SETTINGS: AgentSettings = { on: false, cats: {} }
+/** 사용량 보호: 5시간·7일 사용량이 이 퍼센트 이상이면 새 하위 에이전트를 시작하지 않는다 (끌 수 없다) */
+export const GUARDS = [50, 60, 70, 80, 90]
+export const DEFAULT_GUARD = 80
+/** 한 번의 요청(프롬프트)에서 시작할 수 있는 하위 에이전트 수. 한꺼번에 여러 개 띄워 한도를 넘기는 것을 막는다 */
+export const MAX_SPAWNS_PER_PROMPT = 4
+export const DEFAULT_SETTINGS: AgentSettings = { on: false, guard: DEFAULT_GUARD, cats: {} }
 export const PLUGIN_ID = 'ai-tool-tracker'
 
 /** 에이전트를 만들 수 있는 묶음 ("기타"는 하나로 묶을 일이 없어 뺀다) */
@@ -118,7 +123,7 @@ export const parseSettings = (raw: unknown): AgentSettings => {
       maxTurns: ok(c.maxTurns, lim.turns) ? c.maxTurns : lim.turns.def,
     }
   }
-  return { on: r.on === true, cats }
+  return { on: r.on === true, guard: GUARDS.includes(r.guard) ? r.guard : DEFAULT_GUARD, cats }
 }
 
 export const cfgOf = (s: AgentSettings, cat: CatKey): AgentCfg => s.cats[cat] ?? DEFAULT_CFG
@@ -137,12 +142,18 @@ export const catOfType = (t: unknown): CatKey | undefined => {
   return isCat(c) ? c : undefined
 }
 
-/** 지금까지 쓴 토큰: 새로 읽은 입력 + 출력 + 캐시에 쓴 입력 (캐시에서 읽은 것은 싸서 뺀다) */
+/**
+ * 지금까지 쓴 토큰(근사치): 새로 읽은 입력 + 출력 + 캐시에 쓴 입력 + 캐시에서 읽은 입력의 10%.
+ * 캐시에서 읽은 것은 값이 싸지만 하위 에이전트는 턴마다 그것을 다시 읽으므로, 빼 버리면 실제보다 훨씬 적게 센다.
+ * 10%는 값 비율에 따른 어림이며, 사용량 한도가 정확히 그렇게 세는 것은 아니다.
+ */
 export const tokensOf = (u: {
   input_tokens?: number
   output_tokens?: number
   cache_creation_input_tokens?: number
-}): number => (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+  cache_read_input_tokens?: number
+}): number =>
+  (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + Math.round((u.cache_read_input_tokens ?? 0) * 0.1)
 
 export const addUsage = (prev: AgentUse, cat: CatKey, tokens: number, runs = 0): AgentUse => {
   const cur = prev[cat] ?? { runs: 0, tokens: 0 }

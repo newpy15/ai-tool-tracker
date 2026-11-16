@@ -5,7 +5,7 @@ import { CATEGORY_ORDER } from '../hooks/categories.ts'
 import { safeName } from '../hooks/trust.ts'
 
 test('parseSettings: 엉뚱한 값은 기본값으로 바로잡는다', () => {
-  assert.deepEqual(m.parseSettings(null), { on: false, cats: {} })
+  assert.deepEqual(m.parseSettings(null), { on: false, guard: 80, cats: {} })
   const s = m.parseSettings({ on: true, cats: { video: { model: 'bad model;x', budget: -5, maxTurns: 999 }, other: {}, bogus: {} } })
   assert.equal(s.on, true)
   assert.deepEqual(Object.keys(s.cats), ['video'])
@@ -29,6 +29,7 @@ test('isOver: 0은 제한 없음, 한도에 닿으면 막는다', () => {
 
 test('addUsage/tokensOf: 입력+출력+캐시 쓰기만 더하고 음수·NaN은 0', () => {
   assert.equal(m.tokensOf({ input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 3 }), 18)
+  assert.equal(m.tokensOf({ input_tokens: 10, cache_read_input_tokens: 1000 }), 110)
   let u = m.addUsage({}, 'video', 18, 1)
   u = m.addUsage(u, 'video', -5)
   u = m.addUsage(u, 'video', NaN)
@@ -152,4 +153,10 @@ test('기본값은 빠듯하다: 한 번 실행(약 6만)의 서너 배를 넘�
     assert.ok(l.budget.def <= 200_000, mo)
     assert.ok(l.turns.def <= 15, mo)
   }
+})
+
+test('사용량 보호 설정: 정해진 값만, 아니면 80', () => {
+  assert.equal(m.parseSettings({ guard: 60 }).guard, 60)
+  for (const bad of [0, 100, '80', null, 75]) assert.equal(m.parseSettings({ guard: bad }).guard, 80)
+  assert.ok(m.MAX_SPAWNS_PER_PROMPT >= 1 && m.MAX_SPAWNS_PER_PROMPT <= 6)
 })

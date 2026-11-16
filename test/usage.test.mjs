@@ -57,3 +57,35 @@ test('shouldWarn: 단계가 올라갈 때만, 같은 단계에서는 반복하�
   assert.equal(u.shouldWarn('full', 'high'), false)
   assert.equal(u.shouldWarn(undefined, 'high'), true)
 })
+
+test('overGuard: 7일·5시간 중 하나라도 넘으면 알리고, 값을 모르면 막지 않는다', () => {
+  const l = (f, s) => [{ kind: 'five_hour', percentUsed: f }, { kind: 'seven_day', percentUsed: s }]
+  assert.equal(u.overGuard(l(79, 10), 80), undefined)
+  assert.deepEqual(u.overGuard(l(80, 10), 80), { kind: 'five_hour', percent: 80 })
+  assert.deepEqual(u.overGuard(l(10, 85), 80), { kind: 'seven_day', percent: 85 })
+  assert.equal(u.overGuard([], 50), undefined)
+  assert.equal(u.overGuard(undefined, 50), undefined)
+})
+
+test('attribute: 스킬·에이전트·MCP 설명 토큰을 플러그인별로 모은다', () => {
+  const bd = {
+    skills: { skillFrontmatter: [
+      { name: 'a', pluginName: 'remotion', tokens: 100 },
+      { name: 'b', pluginName: 'remotion', tokens: 50 },
+      { name: 'mine', tokens: 30 },
+      { name: 'x', pluginName: 'other', tokens: 7 },
+    ] },
+    agents: [{ agentType: 'remotion:render', tokens: 20 }, { agentType: 'remotion-extra:z', tokens: 999 }, { agentType: 'Explore', tokens: 5 }],
+    mcpTools: [
+      { name: 't1', serverName: 'plugin:remotion:remotion', tokens: 40, isLoaded: true },
+      { name: 't2', serverName: 'plugin_remotion_remotion', tokens: 10, isLoaded: false },
+      { name: 't3', serverName: 'remotion', tokens: 1, isLoaded: true },
+      { name: 't4', serverName: 'plugin:remotion-pro:srv', tokens: 500, isLoaded: true },
+    ],
+  }
+  const r = u.attribute(bd, ['remotion', 'empty'])
+  assert.deepEqual(r.plugins.remotion, { skills: 150, agents: 20, mcp: 41, total: 211 })
+  assert.deepEqual(r.plugins.empty, { skills: 0, agents: 0, mcp: 0, total: 0 })
+  assert.deepEqual(r.skills, { mine: 30 })
+  assert.deepEqual(u.attribute(undefined, ['x']).plugins.x, { skills: 0, agents: 0, mcp: 0, total: 0 })
+})

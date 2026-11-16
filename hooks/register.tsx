@@ -10,11 +10,11 @@ import type { Tier } from './trust'
 import { categorize, CATEGORY_ORDER } from './categories'
 import type { CatKey } from './categories'
 import {
-  addUsage, AGENT_CATS, buildSpec, catOfType, cfgOf, cycle, DEFAULT_SETTINGS, fmtTokens, isOver, MODEL_PRESETS,
+  addUsage, AGENT_CATS, buildSpec, GUARDS, MAX_SPAWNS_PER_PROMPT, catOfType, cfgOf, cycle, DEFAULT_SETTINGS, fmtTokens, isOver, MODEL_PRESETS,
   modelLabel, changeModel, fit, limitsOf, parseModel, parseSettings, parseTokens, parseTurns, PLUGIN_ID, tokensOf,
 } from './agents'
 import type { AgentSettings, AgentUse } from './agents'
-import { bar, levelColor, levelOf, pct, pickWindow, shouldWarn, untilReset } from './usage'
+import { attribute, bar, levelColor, levelOf, overGuard, pct, pickWindow, shouldWarn, untilReset } from './usage'
 import type { Level } from './usage'
 
 const PANE = 'ai-tools'
@@ -227,6 +227,15 @@ const UI = {
     minStarsHint: '검토되지 않은 저장소는 별이 이 개수보다 적으면 추천하지 않습니다. 0이면 거르지 않습니다.',
     agTitle: '분업 (용도별 하위 에이전트)',
     agHint: '켜면 영상·개발 같은 묶음마다 전용 하위 에이전트가 생기고, 그 일은 정해 둔 모델과 토큰 한도 안에서 맡습니다. 에이전트 목록이 매 턴 조금 늘어나므로 기본은 꺼져 있습니다. 바꾸면 다음 턴부터 적용됩니다. 값은 입력칸에 쓰고 Enter를 누르세요.',
+    guardDeny: (label: string, p: number, g: number) =>
+      `${label} 사용량이 ${p}%라서(보호 기준 ${g}%) 새 하위 에이전트를 시작하지 않았습니다. 초기화된 뒤에 다시 시도하거나, 환경 탭에서 보호 기준을 올릴 수 있습니다.`,
+    spawnCap: (n: number) => `한 번의 요청에서는 하위 에이전트를 ${n}개까지만 시작합니다. 나머지는 다음 요청에서 하세요.`,
+    agGuard: '사용량 보호',
+    agGuardHint: '5시간·7일 사용량 중 하나라도 이 퍼센트 이상이면 새 하위 에이전트를 시작하지 않습니다. 끌 수는 없습니다.',
+    tokAlways: (t: string) => `상시 약 ${t} 토큰`,
+    tokOffNote: '꺼져 있어 토큰을 쓰지 않음',
+    tokTotal: (t: string, n: number) => `켜 둔 플러그인 ${n}개가 대화마다 미리 차지하는 양: 약 ${t} 토큰`,
+    tokNote: '"상시"는 쓰지 않아도 매 대화에 올라가는 설명의 어림값입니다. 실제로 쓴 양이 아니며, 끄면 이만큼 줄어듭니다.',
     usTitle: '사용량',
     usFive: '5시간',
     usSeven: '7일',
@@ -419,6 +428,15 @@ const UI = {
     minStarsHint: 'Unreviewed repositories with fewer stars than this are not recommended. 0 turns the check off.',
     agTitle: 'Division of work (sub-agents by purpose)',
     agHint: 'When on, each group such as Video or Dev gets its own sub-agent that does that work on the model and token budget you set. It adds a little to the agent list every turn, so it is off by default. Changes apply from the next turn. Type a value in a field and press Enter.',
+    guardDeny: (label: string, p: number, g: number) =>
+      `${label} usage is ${p}% (protection threshold ${g}%), so no new sub-agent was started. Try again after the reset, or raise the threshold in the Environment tab.`,
+    spawnCap: (n: number) => `Only ${n} sub-agents are started per request. Do the rest in the next request.`,
+    agGuard: 'Usage protection',
+    agGuardHint: 'When either the 5-hour or the 7-day usage is at or above this percentage, no new sub-agent is started. It cannot be turned off.',
+    tokAlways: (t: string) => `always ~${t} tokens`,
+    tokOffNote: 'off, so it uses no tokens',
+    tokTotal: (t: string, n: number) => `Loaded up front in every conversation by ${n} enabled plugins: about ${t} tokens`,
+    tokNote: '"Always" is an estimate of the descriptions sent every conversation even if unused. It is not what was actually used; turning a plugin off removes it.',
     usTitle: 'Usage',
     usFive: '5 hours',
     usSeven: '7 days',
@@ -1635,6 +1653,10 @@ const fmt = (at: number) => {
 // ---------------------------------------------------------------------------
 let agentSet: AgentSettings = DEFAULT_SETTINGS // 훅이 읽는 현재 설정 (화면은 같은 값을 atom에서 읽는다)
 const agentOf = new Map<string, CatKey>() // 하위 에이전트 id -> 묶음 (사용량을 묶음에 더하려고)
+let spawnCount = 0 // 이번 요청(프롬프트)에서 시작한 하위 에이전트 수
+// 플러그인별 "미리 차지하는 토큰" 측정값(근사치). 자주 읽지 않게 잠깐 보관한다
+type CostMap = { at: number; plugins: Record<string, { skills: number; agents: number; mcp: number; total: number }>; skills: Record<string, number> }
+let costCache: CostMap | undefined
 
 /** 묶음에 든 플러그인·스킬. 이 플러그인 자신은 뺀다 */
 const membersOf = (idx: Index, cat: CatKey) =>
@@ -1746,6 +1768,7 @@ export const register: Register = (on, options) => {
   let lastCat = ''
   let lastAt = 0
   on('prompt.submit', async ($, e, next) => {
+    spawnCount = 0 // 새 요청이 시작되면 하위 에이전트 수를 다시 센다
     try {
       const text = String(e.text ?? '').toLowerCase()
       const cats = text && !text.startsWith('/') ? detectCats(text) : []
@@ -1795,6 +1818,12 @@ export const register: Register = (on, options) => {
   on('agent.spawn', async ($, e, next) => {
     const cat = catOfType(e.subagentType)
     if (cat === undefined) return next(e)
+    // 1) 사용량 보호: 5시간·7일 중 하나라도 기준을 넘었으면 새 하위 에이전트를 시작하지 않는다
+    const lim = await safe($.session.usage())
+    const hit = overGuard(lim?.rateLimits, agentSet.guard)
+    if (hit) return { deny: ui().guardDeny(hit.kind === 'five_hour' ? ui().usFive : ui().usSeven, Math.round(hit.percent), agentSet.guard) }
+    // 2) 한 요청에서 한꺼번에 너무 많이 띄우지 못하게 한다
+    if (spawnCount >= MAX_SPAWNS_PER_PROMPT) return { deny: ui().spawnCap(MAX_SPAWNS_PER_PROMPT) }
     const cfg = cfgOf(agentSet, cat)
     const used = (await read($, agentUseState))[cat]?.tokens ?? 0
     if (isOver(used, cfg.budget)) {
@@ -1803,6 +1832,7 @@ export const register: Register = (on, options) => {
     }
     const started = await next(e)
     if (started.agentId) {
+      spawnCount++
       agentOf.set(started.agentId, cat)
       await update($, agentUseState, u => addUsage(u, cat, 0, 1))
     }
@@ -1845,6 +1875,18 @@ export const register: Register = (on, options) => {
     const seven = pickWindow(usage?.rateLimits, 'seven_day')
     const ctxPct = pct(usage?.context?.percent)
     const costUsd = typeof usage?.cost?.usd === 'number' ? usage.cost.usd : undefined
+    // 플러그인별 "미리 차지하는 토큰": 1분에 한 번만 다시 잰다. 모델 호출 없이 Claude Code의 어림값을 읽는다
+    if (!costCache || Date.now() - costCache.at > 60_000) {
+      const bd: any = await safe($.session.usage({ breakdown: 'summary' }))
+      const names = idx.items.filter(i => i.kind === 'plugin').map(i => i.name)
+      const a = attribute(bd?.context?.breakdown, names)
+      costCache = { at: Date.now(), plugins: a.plugins, skills: a.skills }
+    }
+    const costOf = (it: Item): number | undefined => {
+      if (!it.enabled && it.kind === 'plugin') return undefined
+      const c = it.kind === 'plugin' ? costCache?.plugins[it.name]?.total : costCache?.skills[it.name]
+      return c && c > 0 ? c : undefined
+    }
     const usageLine = (label: string, w: { percent: number; resetsAt?: string }) => {
       const lv = levelOf(w.percent)
       const left = untilReset(w.resetsAt, Date.now())
@@ -2164,6 +2206,8 @@ export const register: Register = (on, options) => {
                   <Text dimColor> [{kindText} · {whereText}{countText}]</Text>
                 </Box>
                 <Text dimColor>{it.summary ? tx(it.summary) : ui().noDesc}</Text>
+                {it.kind === 'plugin' && !it.enabled && canToggle && <Text dimColor>{ui().tokOffNote}</Text>}
+                {costOf(it) !== undefined && <Text dimColor>{ui().tokAlways(fmtTokens(costOf(it) ?? 0))}</Text>}
                 {canToggle && toggleState === 'changed' && (
                   <Text dimColor>{it.enabled ? ui().nowOn : ui().nowOff}</Text>
                 )}
@@ -2296,6 +2340,12 @@ export const register: Register = (on, options) => {
           <Box flexDirection="column">
             <Text bold>{sub === 'skills' ? ui().secSkills(skillCount) : ui().secPlugins(plugCount)}</Text>
             <Text dimColor>{sub === 'skills' ? ui().hintSkills : ui().hintPlugins}</Text>
+            {sub !== 'skills' && (() => {
+              const enabledNow = visible.filter(i => i.enabled)
+              const sum = enabledNow.reduce((n, i) => n + (costOf(i) ?? 0), 0)
+              return sum > 0 ? <Text bold>{ui().tokTotal(fmtTokens(sum), enabledNow.length)}</Text> : null
+            })()}
+            {sub !== 'skills' && <Text dimColor>{ui().tokNote}</Text>}
             {sub !== 'skills' && bulkButtons('all', visible)}
             {sub !== 'skills' && bulkStatus('all', visible)}
             <Text> </Text>
@@ -2366,6 +2416,19 @@ export const register: Register = (on, options) => {
             onPress={() => void saveAgents($, { ...agCfg, on: !agCfg.on })}
           />
         </Box>
+        {agCfg.on && (
+          <Box flexDirection="column" marginTop={1}>
+            <Box gap={1}>
+              <Text bold>{ui().agGuard}:</Text>
+              <Button
+                key="ag-guard"
+                label={`${agCfg.guard}%`}
+                onPress={() => void saveAgents($, { ...agCfg, guard: cycle(GUARDS, agCfg.guard) })}
+              />
+            </Box>
+            <Text dimColor>{ui().agGuardHint}</Text>
+          </Box>
+        )}
         {agCfg.on && AGENT_CATS.filter(c => membersOf(idx, c).length > 0).length === 0 && (
           <Text dimColor>{ui().agNone}</Text>
         )}
