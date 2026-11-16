@@ -9,6 +9,11 @@ import {
 import type { Tier } from './trust'
 import { categorize, CATEGORY_ORDER } from './categories'
 import type { CatKey } from './categories'
+import {
+  addUsage, AGENT_CATS, AGENT_MODELS, BUDGETS, buildSpec, catOfType, cfgOf, cycle, DEFAULT_SETTINGS, fmtTokens, isOver,
+  parseSettings, PLUGIN_ID, tokensOf, TURN_LIMITS, typeOf,
+} from './agents'
+import type { AgentSettings, AgentUse } from './agents'
 
 const PANE = 'ai-tools'
 
@@ -30,6 +35,13 @@ const subState = atom({ plugin: 'ai-tool-tracker', key: 'sub' } as const, 'plugi
 const EMPTY_RECO: RecoState = { groups: [], at: 0 }
 const recoState = atom({ plugin: 'ai-tool-tracker', key: 'reco' } as const, EMPTY_RECO, {
   shape: 'reco-4', // 항목의 모양(관련도·갈라 쓴 수)과 묶음의 모양(별 확인 상태)을 바꿨으므로 태그도 올린다: 이전 버전이 저장한 값을 버리게 한다
+})
+// 용도별 하위 에이전트 설정(저장소에도 따로 보관)과 이 세션에서 쓴 양
+const agentCfgState = atom({ plugin: 'ai-tool-tracker', key: 'agents' } as const, DEFAULT_SETTINGS, {
+  shape: 'agents-1',
+})
+const agentUseState = atom({ plugin: 'ai-tool-tracker', key: 'agentUse' } as const, {} as AgentUse, {
+  shape: 'agentuse-1',
 })
 // 펼쳐진 항목 이름 -> true
 const open = atom({ plugin: 'ai-tool-tracker', key: 'open' } as const, {}, {
@@ -211,6 +223,19 @@ const UI = {
     starsUnknown: '별: 확인 전',
     minStarsLabel: '추천에 필요한 최소 별 개수',
     minStarsHint: '검토되지 않은 저장소는 별이 이 개수보다 적으면 추천하지 않습니다. 0이면 거르지 않습니다.',
+    agTitle: '분업 (용도별 하위 에이전트)',
+    agHint: '켜면 영상·개발 같은 묶음마다 전용 하위 에이전트가 생기고, 그 일은 정해 둔 모델과 토큰 한도 안에서 맡습니다. 에이전트 목록이 매 턴 조금 늘어나므로 기본은 꺼져 있습니다. 바꾸면 다음 턴부터 적용됩니다.',
+    agModel: '모델',
+    agBudget: '토큰 한도',
+    agTurns: '최대 턴',
+    agNoLimit: '제한 없음',
+    agInherit: '지금 모델 그대로',
+    agUsed: (runs: number, tokens: string) => `이번 세션 ${runs}회 · ${tokens} 토큰`,
+    agOver: (label: string, used: string, budget: string) =>
+      `${label} 묶음이 토큰 한도(${budget})에 닿아(${used}) 새 하위 에이전트를 시작하지 않았습니다. 환경 탭에서 한도를 올릴 수 있습니다.`,
+    agNone: '분업할 수 있는 묶음이 아직 없습니다. 도구 탭에서 플러그인이 용도별로 묶이면 여기에 나옵니다.',
+    agLine: (model: string, budget: string, used: string) => `하위 에이전트: ${model} · 한도 ${budget} · 사용 ${used}`,
+    agLimitNote: '한도는 새 하위 에이전트를 시작할 때 확인합니다. 이미 도는 중인 것을 중간에 끊지는 않고, 한 번의 길이는 "최대 턴"으로 막습니다.',
     tabReco: (n: number) => (n > 0 ? `추천 (${n})` : '추천'),
     recoTitle: '이런 도구는 어때요?',
     recoNone: '아직 추천할 내용이 없습니다. "동영상 만들어줘"처럼 요청하거나 /ai-find 동영상 제작 처럼 검색해 보세요.',
@@ -374,6 +399,19 @@ const UI = {
     starsUnknown: 'Stars: not checked yet',
     minStarsLabel: 'Minimum stars to recommend',
     minStarsHint: 'Unreviewed repositories with fewer stars than this are not recommended. 0 turns the check off.',
+    agTitle: 'Division of work (sub-agents by purpose)',
+    agHint: 'When on, each group such as Video or Dev gets its own sub-agent that does that work on the model and token budget you set. It adds a little to the agent list every turn, so it is off by default. Changes apply from the next turn.',
+    agModel: 'Model',
+    agBudget: 'Token budget',
+    agTurns: 'Max turns',
+    agNoLimit: 'No limit',
+    agInherit: 'Same as now',
+    agUsed: (runs: number, tokens: string) => `This session: ${runs} runs · ${tokens} tokens`,
+    agOver: (label: string, used: string, budget: string) =>
+      `The ${label} group reached its token budget (${budget}, used ${used}), so no new sub-agent was started. You can raise the budget in the Environment tab.`,
+    agNone: 'No groups to hand work to yet. They appear here once plugins are grouped by purpose in the Tools tab.',
+    agLine: (model: string, budget: string, used: string) => `Sub-agent: ${model} · budget ${budget} · used ${used}`,
+    agLimitNote: 'The budget is checked when a new sub-agent starts. A running one is not cut off midway; its length is limited by "Max turns".',
     tabReco: (n: number) => (n > 0 ? `Suggestions (${n})` : 'Suggestions'),
     recoTitle: 'How about these tools?',
     recoNone: 'Nothing to suggest yet. Ask for something like "make a video", or search with /ai-find video.',
@@ -1559,6 +1597,42 @@ const fmt = (at: number) => {
 }
 
 // ---------------------------------------------------------------------------
+// 3-2) 용도별 하위 에이전트 (분업)
+// ---------------------------------------------------------------------------
+let agentSet: AgentSettings = DEFAULT_SETTINGS // 훅이 읽는 현재 설정 (화면은 같은 값을 atom에서 읽는다)
+const agentOf = new Map<string, CatKey>() // 하위 에이전트 id -> 묶음 (사용량을 묶음에 더하려고)
+
+/** 묶음에 든 플러그인·스킬. 이 플러그인 자신은 뺀다 */
+const membersOf = (idx: Index, cat: CatKey) =>
+  idx.items.filter(i => i.cat === cat && (i.kind === 'plugin' || i.kind === 'skill') && i.name !== PLUGIN_ID)
+
+/** 켜져 있으면 묶음마다 에이전트 종류를 등록한다. 이름이 같으면 바뀐 설정으로 덮어쓴다 */
+const syncAgents = async ($: any) => {
+  if (!agentSet.on) return
+  const idx = await ensure($)
+  for (const cat of AGENT_CATS) {
+    const members = membersOf(idx, cat)
+    if (members.length === 0) continue
+    const spec = buildSpec(cat, String(ui()[`catg_${cat}`] ?? cat), members, cfgOf(agentSet, cat))
+    await safe($.agent.register(spec))
+  }
+}
+
+const loadAgents = async ($: any) => {
+  agentSet = parseSettings(await safe($.store.get('agent-settings')))
+  await update($, agentCfgState, () => agentSet)
+  await syncAgents($)
+}
+
+/** 설정을 바꾸고 저장한 뒤 에이전트를 다시 등록한다 */
+const saveAgents = async ($: any, next: AgentSettings) => {
+  agentSet = next
+  await update($, agentCfgState, () => next)
+  await safe($.store.set('agent-settings', next))
+  await syncAgents($)
+}
+
+// ---------------------------------------------------------------------------
 // 4) 훅
 // ---------------------------------------------------------------------------
 export const register: Register = (on, options) => {
@@ -1578,6 +1652,7 @@ export const register: Register = (on, options) => {
     })
     await $.command.register({ name: 'ai-find', description: ui().findUsage, argumentHint: '[feature]' })
     void prepare($) // 설치된 스킬·플러그인 읽고, 필요하면 번역
+    void loadAgents($).catch(() => {}) // 분업 설정을 불러오고, 켜져 있으면 에이전트 종류를 등록
     void $.ui.open({ id: PANE, title: ui().paneTitle })
     return next(e)
   })
@@ -1676,6 +1751,37 @@ export const register: Register = (on, options) => {
     return ran
   }).catch(($, e, next) => next(e))
 
+  // 분업: 우리 에이전트 종류만 다룬다. 설정이 꺼져 있으면 모델에게 보이지 않게 한다.
+  on('agent.offer', async ($, e, next) => {
+    if (catOfType(e.agent) === undefined) return next(e)
+    return { isOffered: agentSet.on }
+  }).catch(($, e, next) => next(e))
+
+  // 새 하위 에이전트를 시작하기 전에 토큰 한도를 확인하고, 시작되면 어느 묶음의 것인지 기억한다
+  on('agent.spawn', async ($, e, next) => {
+    const cat = catOfType(e.subagentType)
+    if (cat === undefined) return next(e)
+    const cfg = cfgOf(agentSet, cat)
+    const used = (await read($, agentUseState))[cat]?.tokens ?? 0
+    if (isOver(used, cfg.budget)) {
+      const label = String(ui()[`catg_${cat}`] ?? cat)
+      return { deny: ui().agOver(label, fmtTokens(used), fmtTokens(cfg.budget)) }
+    }
+    const started = await next(e)
+    if (started.agentId) {
+      agentOf.set(started.agentId, cat)
+      await update($, agentUseState, u => addUsage(u, cat, 0, 1))
+    }
+    return started
+  }).catch(($, e, next) => next(e))
+
+  // 하위 에이전트가 한 턴을 마칠 때마다 쓴 토큰을 그 묶음에 더한다
+  on('turn.complete', async ($, e, next) => {
+    const cat = e.agentId ? agentOf.get(e.agentId) : undefined
+    if (cat !== undefined && e.usage) await update($, agentUseState, u => addUsage(u, cat, tokensOf(e.usage!)))
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text, Link } = $.ui.resolve(e)
     const list = await read($, uses)
@@ -1687,6 +1793,10 @@ export const register: Register = (on, options) => {
     const reco: RecoState = { groups: Array.isArray(recoRaw?.groups) ? recoRaw.groups : [], at: recoRaw?.at ?? 0 }
     const tab = await read($, tabState)
     const sub = await read($, subState)
+    const agCfg = parseSettings(await read($, agentCfgState))
+    const agUse = (await read($, agentUseState)) ?? {}
+    const modelText = (m: string) => (m === 'inherit' ? ui().agInherit : m)
+    const budgetText = (n: number) => (n === 0 ? ui().agNoLimit : fmtTokens(n))
     const rows = e.viewport?.rows ?? 40
 
     // 도구별 집계 (최근 사용 순)
@@ -1857,7 +1967,7 @@ export const register: Register = (on, options) => {
       const offT = list.filter(it => canToggleItem(it) && it.enabled)
       const onT = list.filter(it => canToggleItem(it) && !it.enabled)
       return (
-        <Box>
+        <Box gap={1}>
           {onT.length > 0 && (
             <Button
               key={`bulk-on-${scope}`}
@@ -1919,8 +2029,8 @@ export const register: Register = (on, options) => {
     const headerRow = (cat: CatKey, items: Item[]) => {
       const collapsed = !!openState[`cat:${cat}`]
       return (
-        <Box flexDirection="column">
-          <Box>
+        <Box flexDirection="column" marginTop={1}>
+          <Box gap={2}>
             <Button
               key={`cat-${cat}`}
               label={`${collapsed ? '▸' : '▾'} ${ui()[`catg_${cat}`] ?? cat} (${items.length})`}
@@ -1929,6 +2039,15 @@ export const register: Register = (on, options) => {
             {sub !== 'skills' && bulkButtons(`cat:${cat}`, items)}
           </Box>
           {sub !== 'skills' && bulkStatus(`cat:${cat}`, items)}
+          {agCfg.on && (AGENT_CATS as string[]).includes(cat) && (
+            <Text dimColor>
+              {ui().agLine(
+                modelText(cfgOf(agCfg, cat).model),
+                budgetText(cfgOf(agCfg, cat).budget),
+                fmtTokens(agUse[cat]?.tokens ?? 0),
+              )}
+            </Text>
+          )}
         </Box>
       )
     }
@@ -1954,7 +2073,7 @@ export const register: Register = (on, options) => {
             ...it.mcp.map(x => `MCP: ${x}`),
           ]
           return (
-            <Box>
+            <Box marginTop={1} paddingLeft={1}>
               {it.kind === 'plugin' && (
               <Box width={16} flexShrink={0}>
                 {canToggle && (
@@ -2017,8 +2136,8 @@ export const register: Register = (on, options) => {
     for (const en of entries) {
       const need =
         en.type === 'header'
-          ? 1
-          : 2 + (openState[en.it.name] ? Math.max(1, en.it.children.length + en.it.agents.length + en.it.mcp.length) : 0)
+          ? 2
+          : 3 + (openState[en.it.name] ? Math.max(1, en.it.children.length + en.it.agents.length + en.it.mcp.length) : 0)
       if (!showAll && shownEntries.length > 0 && usedLines + need > budget) break
       usedLines += need
       shownEntries.push(en)
@@ -2028,7 +2147,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
-        <Box>
+        <Box gap={1}>
           {([
             ['tools', ui().tabTools],
             ['log', ui().tabLog(list.length)],
@@ -2074,7 +2193,7 @@ export const register: Register = (on, options) => {
         {tab === 'tools' && (
           <Box flexDirection="column">
         <Text> </Text>
-        <Box>
+        <Box gap={1}>
           <Button
             key="sub-plugins"
             label={ui().subPlugins(plugCount)}
@@ -2152,6 +2271,54 @@ export const register: Register = (on, options) => {
           ))}
         </Box>
         <Text dimColor>{ui().minStarsHint}</Text>
+        <Text> </Text>
+        <Text bold>{ui().agTitle}</Text>
+        <Text dimColor>{ui().agHint}</Text>
+        <Box gap={1} marginTop={1}>
+          <Text backgroundColor={agCfg.on ? 'success' : 'error'} color="inverseText" bold>
+            {` ${agCfg.on ? ui().on : ui().off} `}
+          </Text>
+          <Button
+            key="ag-master"
+            label={agCfg.on ? ui().turnOff : ui().turnOn}
+            onPress={() => void saveAgents($, { ...agCfg, on: !agCfg.on })}
+          />
+        </Box>
+        {agCfg.on && AGENT_CATS.filter(c => membersOf(idx, c).length > 0).length === 0 && (
+          <Text dimColor>{ui().agNone}</Text>
+        )}
+        {agCfg.on &&
+          AGENT_CATS.filter(c => membersOf(idx, c).length > 0).map(cat => {
+            const cfg = cfgOf(agCfg, cat)
+            const put = (patch: Partial<typeof cfg>) =>
+              void saveAgents($, { ...agCfg, cats: { ...agCfg.cats, [cat]: { ...cfg, ...patch } } })
+            return (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>
+                  {ui()[`catg_${cat}`] ?? cat} <Text dimColor>({membersOf(idx, cat).length})</Text>
+                </Text>
+                <Box gap={1} paddingLeft={2}>
+                  <Button
+                    key={`ag-model-${cat}`}
+                    label={`${ui().agModel}: ${modelText(cfg.model)}`}
+                    onPress={() => put({ model: cycle(AGENT_MODELS, cfg.model) })}
+                  />
+                  <Button
+                    key={`ag-budget-${cat}`}
+                    label={`${ui().agBudget}: ${budgetText(cfg.budget)}`}
+                    onPress={() => put({ budget: cycle(BUDGETS, cfg.budget) })}
+                  />
+                  <Button
+                    key={`ag-turns-${cat}`}
+                    label={`${ui().agTurns}: ${cfg.maxTurns}`}
+                    onPress={() => put({ maxTurns: cycle(TURN_LIMITS, cfg.maxTurns) })}
+                  />
+                </Box>
+                <Text dimColor>  {ui().agUsed(agUse[cat]?.runs ?? 0, fmtTokens(agUse[cat]?.tokens ?? 0))}</Text>
+              </Box>
+            )
+          })}
+        {agCfg.on && <Text dimColor>{ui().agLimitNote}</Text>}
         <Text> </Text>
         <Text bold>{ui().env}</Text>
         <Text dimColor>

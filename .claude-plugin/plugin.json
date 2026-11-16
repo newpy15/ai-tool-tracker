@@ -1,6 +1,6 @@
 {
   "name": "ai-tool-tracker",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A side panel for Claude Code that shows which plugins, skills and MCP tools you use while you work, what each is for, and suggests tools for what you want to build. 작업 중 쓰인 플러그인·스킬을 실시간으로 보여주고, 필요한 도구를 찾아 추천해 주는 패널.",
   "author": { "name": "newpy15" },
   "license": "MIT",
