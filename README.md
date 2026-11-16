@@ -39,7 +39,7 @@ So I built a panel that "shows the tools you used, helps you find the ones you n
 - **Tokens**: no model is used to scan files. A model is used only for translation (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (33 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (37 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -95,7 +95,7 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 | See which tools were just used | the **Live log** tab |
 | Understand what a plugin does | the **Tools** tab, click its name to expand it |
 | Switch off plugins you don't use, to cut tokens | the **Tools** tab → the `Turn off` button on the plugin's row (see "Cautions" below) |
-| Hand each group's work to its own sub-agent with its own model and token budget | the **Environment** tab → "Division of work" → `Turn on`, then pick a model and budget per group |
+| Hand each group's work to its own sub-agent with its own model and token budget | the **Environment** tab → "Division of work" → `Turn on`, then, per group, pick a model (Haiku, Sonnet, Opus 5.5, Fable 5.2 ... or type any model ID) and type a token budget such as `150k` |
 | Switch off or on many plugins at once | the **Tools** tab → `Turn all off` / `Turn all on`, or `Turn this group off` on a group such as Video (it asks first) |
 | Find tools for what you want to build | say it, or `/ai-find what you want` → the **Suggestions** tab |
 | Change the screen language | the language buttons at the top of the **Environment** tab |

@@ -6,7 +6,7 @@ import { safeName } from '../hooks/trust.ts'
 
 test('parseSettings: 엉뚱한 값은 기본값으로 바로잡는다', () => {
   assert.deepEqual(m.parseSettings(null), { on: false, cats: {} })
-  const s = m.parseSettings({ on: true, cats: { video: { model: 'evil', budget: 7, maxTurns: 999 }, other: {}, bogus: {} } })
+  const s = m.parseSettings({ on: true, cats: { video: { model: 'bad model;x', budget: -5, maxTurns: 999 }, other: {}, bogus: {} } })
   assert.equal(s.on, true)
   assert.deepEqual(Object.keys(s.cats), ['video'])
   assert.deepEqual(s.cats.video, m.DEFAULT_CFG)
@@ -36,8 +36,8 @@ test('addUsage/tokensOf: 입력+출력+캐시 쓰기만 더하고 음수·NaN은
 })
 
 test('cycle: 끝에서 처음으로 돌아온다', () => {
-  assert.equal(m.cycle(m.AGENT_MODELS, 'opus'), 'inherit')
-  assert.equal(m.cycle(m.BUDGETS, 0), 50_000)
+  assert.equal(m.cycle(m.MODEL_PRESETS, 'claude-fable-5-2'), 'inherit')
+  assert.equal(m.cycle(m.MODEL_PRESETS, 'inherit'), 'haiku')
 })
 
 test('fmtTokens', () => {
@@ -84,4 +84,28 @@ test('이름 검사는 trust.safeName과 같은 결과를 낸다', () => {
     const listed = /tools: (.*)\. It runs/.exec(spec.description)[1]
     assert.equal(listed === n && n !== '', safeName(n) !== '', n)
   }
+})
+
+test('parseTokens: k/m 표기와 쉼표, 0은 제한 없음, 이상한 값은 거절', () => {
+  assert.equal(m.parseTokens('150k'), 150_000)
+  assert.equal(m.parseTokens('1.5M'), 1_500_000)
+  assert.equal(m.parseTokens('200,000'), 200_000)
+  assert.equal(m.parseTokens('0'), 0)
+  for (const bad of ['', 'abc', '-5', '1e9', '101m', '1 000 k x', undefined]) assert.equal(m.parseTokens(bad), undefined, String(bad))
+})
+
+test('parseTurns: 1~200의 정수만', () => {
+  assert.equal(m.parseTurns('30'), 30)
+  for (const bad of ['0', '201', '-1', '3.5', 'x', '']) assert.equal(m.parseTurns(bad), undefined, bad)
+})
+
+test('parseModel: 모델 ID로 쓸 수 있는 글자만', () => {
+  assert.equal(m.parseModel(' claude-opus-5-5 '), 'claude-opus-5-5')
+  assert.equal(m.parseModel('opus'), 'opus')
+  for (const bad of ['', 'a b', 'x;rm', '-x', '한글', 'a'.repeat(81)]) assert.equal(m.parseModel(bad), undefined, bad)
+})
+
+test('modelLabel: 아는 ID는 이름으로, 모르면 그대로', () => {
+  assert.equal(m.modelLabel('claude-opus-5-5'), 'Opus 5.5')
+  assert.equal(m.modelLabel('claude-opus-9-9'), 'claude-opus-9-9')
 })

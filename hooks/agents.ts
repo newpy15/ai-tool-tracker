@@ -8,12 +8,44 @@
 // 아래 AGENT_CATS와 okName은 categories.ts, trust.ts와 같아야 하며 시험이 같은지 확인한다.
 import type { CatKey } from './categories'
 
-export type AgentModel = 'inherit' | 'haiku' | 'sonnet' | 'opus'
-export const AGENT_MODELS: AgentModel[] = ['inherit', 'haiku', 'sonnet', 'opus']
-/** 묶음마다 쓸 수 있는 토큰 한도 후보 (0 = 제한 없음) */
-export const BUDGETS = [0, 50_000, 200_000, 1_000_000]
-/** 하위 에이전트 한 번이 돌 수 있는 최대 턴 후보 */
-export const TURN_LIMITS = [10, 20, 40]
+/** 모델: 별칭(haiku 등), 모델 ID, 또는 inherit(지금 모델 그대로) */
+export type AgentModel = string
+/** 고르기 버튼으로 돌려 보는 모델 (별칭은 그 계열의 최신, ID는 정확한 버전). 다른 것은 직접 입력한다 */
+export const MODEL_PRESETS: string[] = [
+  'inherit', 'haiku', 'sonnet', 'opus',
+  'claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-2',
+]
+const MODEL_LABELS: Record<string, string> = {
+  haiku: 'Haiku (latest)', sonnet: 'Sonnet (latest)', opus: 'Opus (latest)',
+  'claude-haiku-5-5': 'Haiku 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5',
+  'claude-opus-5-5': 'Opus 5.5', 'claude-fable-5-2': 'Fable 5.2',
+}
+/** 화면에 보일 모델 이름. 모르는 ID는 그대로 보인다 */
+export const modelLabel = (m: string): string => MODEL_LABELS[m] ?? m
+export const MAX_BUDGET = 100_000_000
+export const MAX_TURNS = 200
+
+/** 모델 ID로 써도 안전한 글자만: 아니면 undefined */
+export const parseModel = (t: unknown): string | undefined => {
+  const s = (typeof t === 'string' ? t : '').trim()
+  return /^[A-Za-z0-9][A-Za-z0-9._:\-]{0,79}$/.test(s) ? s : undefined
+}
+
+/** 토큰 수 입력: 200000, 150k, 1.5m, 0(제한 없음). 알아볼 수 없으면 undefined */
+export const parseTokens = (t: unknown): number | undefined => {
+  const m = /^(\d+(?:\.\d+)?)\s*([km]?)$/i.exec((typeof t === 'string' ? t : '').trim().replace(/,/g, ''))
+  if (!m) return undefined
+  const n = Math.round(parseFloat(m[1]) * (m[2].toLowerCase() === 'm' ? 1_000_000 : m[2].toLowerCase() === 'k' ? 1000 : 1))
+  return Number.isFinite(n) && n >= 0 && n <= MAX_BUDGET ? n : undefined
+}
+
+/** 최대 턴 입력: 1부터 MAX_TURNS까지의 정수 */
+export const parseTurns = (t: unknown): number | undefined => {
+  const s = (typeof t === 'string' ? t : '').trim()
+  if (!/^\d{1,3}$/.test(s)) return undefined
+  const n = parseInt(s, 10)
+  return n >= 1 && n <= MAX_TURNS ? n : undefined
+}
 
 export type AgentCfg = { model: AgentModel; budget: number; maxTurns: number }
 export type AgentSettings = { on: boolean; cats: Partial<Record<CatKey, AgentCfg>> }
@@ -45,9 +77,10 @@ export const parseSettings = (raw: unknown): AgentSettings => {
     if (!isCat(k)) continue
     const c = src[k] ?? {}
     cats[k] = {
-      model: AGENT_MODELS.includes(c.model) ? c.model : DEFAULT_CFG.model,
-      budget: BUDGETS.includes(c.budget) ? c.budget : DEFAULT_CFG.budget,
-      maxTurns: TURN_LIMITS.includes(c.maxTurns) ? c.maxTurns : DEFAULT_CFG.maxTurns,
+      model: parseModel(c.model) ?? DEFAULT_CFG.model,
+      budget: Number.isInteger(c.budget) && c.budget >= 0 && c.budget <= MAX_BUDGET ? c.budget : DEFAULT_CFG.budget,
+      maxTurns:
+        Number.isInteger(c.maxTurns) && c.maxTurns >= 1 && c.maxTurns <= MAX_TURNS ? c.maxTurns : DEFAULT_CFG.maxTurns,
     }
   }
   return { on: r.on === true, cats }

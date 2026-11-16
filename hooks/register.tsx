@@ -10,8 +10,8 @@ import type { Tier } from './trust'
 import { categorize, CATEGORY_ORDER } from './categories'
 import type { CatKey } from './categories'
 import {
-  addUsage, AGENT_CATS, AGENT_MODELS, BUDGETS, buildSpec, catOfType, cfgOf, cycle, DEFAULT_SETTINGS, fmtTokens, isOver,
-  parseSettings, PLUGIN_ID, tokensOf, TURN_LIMITS, typeOf,
+  addUsage, AGENT_CATS, buildSpec, catOfType, cfgOf, cycle, DEFAULT_SETTINGS, fmtTokens, isOver, MODEL_PRESETS,
+  modelLabel, parseModel, parseSettings, parseTokens, parseTurns, PLUGIN_ID, tokensOf,
 } from './agents'
 import type { AgentSettings, AgentUse } from './agents'
 
@@ -224,8 +224,11 @@ const UI = {
     minStarsLabel: '추천에 필요한 최소 별 개수',
     minStarsHint: '검토되지 않은 저장소는 별이 이 개수보다 적으면 추천하지 않습니다. 0이면 거르지 않습니다.',
     agTitle: '분업 (용도별 하위 에이전트)',
-    agHint: '켜면 영상·개발 같은 묶음마다 전용 하위 에이전트가 생기고, 그 일은 정해 둔 모델과 토큰 한도 안에서 맡습니다. 에이전트 목록이 매 턴 조금 늘어나므로 기본은 꺼져 있습니다. 바꾸면 다음 턴부터 적용됩니다.',
+    agHint: '켜면 영상·개발 같은 묶음마다 전용 하위 에이전트가 생기고, 그 일은 정해 둔 모델과 토큰 한도 안에서 맡습니다. 에이전트 목록이 매 턴 조금 늘어나므로 기본은 꺼져 있습니다. 바꾸면 다음 턴부터 적용됩니다. 값은 입력칸에 쓰고 Enter를 누르세요.',
     agModel: '모델',
+    agModelCustom: '모델 ID 직접 입력:',
+    agBudgetEx: '예: 150k, 1.5m, 0=제한 없음',
+    agBad: '알아볼 수 없는 값입니다. 입력한 그대로는 저장하지 않았습니다.',
     agBudget: '토큰 한도',
     agTurns: '최대 턴',
     agNoLimit: '제한 없음',
@@ -400,8 +403,11 @@ const UI = {
     minStarsLabel: 'Minimum stars to recommend',
     minStarsHint: 'Unreviewed repositories with fewer stars than this are not recommended. 0 turns the check off.',
     agTitle: 'Division of work (sub-agents by purpose)',
-    agHint: 'When on, each group such as Video or Dev gets its own sub-agent that does that work on the model and token budget you set. It adds a little to the agent list every turn, so it is off by default. Changes apply from the next turn.',
+    agHint: 'When on, each group such as Video or Dev gets its own sub-agent that does that work on the model and token budget you set. It adds a little to the agent list every turn, so it is off by default. Changes apply from the next turn. Type a value in a field and press Enter.',
     agModel: 'Model',
+    agModelCustom: 'Custom model ID:',
+    agBudgetEx: 'e.g. 150k, 1.5m, 0 = no limit',
+    agBad: 'That value could not be read, so it was not saved.',
     agBudget: 'Token budget',
     agTurns: 'Max turns',
     agNoLimit: 'No limit',
@@ -1783,7 +1789,7 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text, Link } = $.ui.resolve(e)
+    const { Box, Button, Text, Link, Input } = $.ui.resolve(e)
     const list = await read($, uses)
     const idx = await ensure($)
     const moveState = await read($, moves)
@@ -1795,7 +1801,7 @@ export const register: Register = (on, options) => {
     const sub = await read($, subState)
     const agCfg = parseSettings(await read($, agentCfgState))
     const agUse = (await read($, agentUseState)) ?? {}
-    const modelText = (m: string) => (m === 'inherit' ? ui().agInherit : m)
+    const modelText = (m: string) => (m === 'inherit' ? ui().agInherit : modelLabel(m))
     const budgetText = (n: number) => (n === 0 ? ui().agNoLimit : fmtTokens(n))
     const rows = e.viewport?.rows ?? 40
 
@@ -2298,20 +2304,51 @@ export const register: Register = (on, options) => {
                   {ui()[`catg_${cat}`] ?? cat} <Text dimColor>({membersOf(idx, cat).length})</Text>
                 </Text>
                 <Box gap={1} paddingLeft={2}>
+                  <Text dimColor>{ui().agModel}:</Text>
                   <Button
                     key={`ag-model-${cat}`}
-                    label={`${ui().agModel}: ${modelText(cfg.model)}`}
-                    onPress={() => put({ model: cycle(AGENT_MODELS, cfg.model) })}
+                    label={modelText(cfg.model)}
+                    onPress={() => put({ model: cycle(MODEL_PRESETS, cfg.model) })}
                   />
-                  <Button
-                    key={`ag-budget-${cat}`}
-                    label={`${ui().agBudget}: ${budgetText(cfg.budget)}`}
-                    onPress={() => put({ budget: cycle(BUDGETS, cfg.budget) })}
+                </Box>
+                <Box paddingLeft={2}>
+                  <Input
+                    key={`ag-model-in-${cat}`}
+                    label={`${ui().agModelCustom} `}
+                    placeholder="claude-opus-5-5"
+                    value={MODEL_PRESETS.includes(cfg.model) ? '' : cfg.model}
+                    onSubmit={(v: string) => {
+                      const m = parseModel(v)
+                      if (m) put({ model: m })
+                      else if (v.trim() === '') put({ model: 'inherit' })
+                      else $.ui.toast(ui().agBad)
+                    }}
                   />
-                  <Button
-                    key={`ag-turns-${cat}`}
-                    label={`${ui().agTurns}: ${cfg.maxTurns}`}
-                    onPress={() => put({ maxTurns: cycle(TURN_LIMITS, cfg.maxTurns) })}
+                </Box>
+                <Box paddingLeft={2}>
+                  <Input
+                    key={`ag-budget-in-${cat}`}
+                    label={`${ui().agBudget} `}
+                    placeholder={ui().agBudgetEx}
+                    value={String(cfg.budget)}
+                    onSubmit={(v: string) => {
+                      const n = parseTokens(v)
+                      if (n === undefined) $.ui.toast(ui().agBad)
+                      else put({ budget: n })
+                    }}
+                  />
+                </Box>
+                <Box paddingLeft={2}>
+                  <Input
+                    key={`ag-turns-in-${cat}`}
+                    label={`${ui().agTurns} `}
+                    placeholder="1-200"
+                    value={String(cfg.maxTurns)}
+                    onSubmit={(v: string) => {
+                      const n = parseTurns(v)
+                      if (n === undefined) $.ui.toast(ui().agBad)
+                      else put({ maxTurns: n })
+                    }}
                   />
                 </Box>
                 <Text dimColor>  {ui().agUsed(agUse[cat]?.runs ?? 0, fmtTokens(agUse[cat]?.tokens ?? 0))}</Text>
