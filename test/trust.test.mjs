@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   clean, safeName, safeRepo, repoFromUrl, githubLink, ownerOf,
-  tierFromReview, tierRank, githubFlags,
+  tierFromReview, tierRank, githubFlags, rankRecos, isLowStars, mergeRecos, relevance,
 } from '../hooks/trust.ts'
 
 test('safeName: 명령에 쓸 수 있는 이름만 통과', () => {
@@ -75,6 +75,108 @@ test('tierFromReview: 누가 검토했는지 모르면 높게 치지 않는다',
   assert.ok(tierRank('anthropic') > tierRank('partner'))
   assert.ok(tierRank('partner') > tierRank('listed'))
   assert.ok(tierRank('listed') > tierRank('github'))
+})
+
+const R = (o) => ({ id: o.repo ?? o.name, name: o.name ?? 'x', summary: '', repo: '', owner: '', tier: 'listed', flags: [], installed: false, cmd: '', source: 'dir', rel: 3, ...o })
+
+test('rankRecos: 별이 가장 많은 1~2개를 추천으로 뽑는다', () => {
+  const items = [
+    R({ name: 'zero', repo: 'a/zero', stars: 0 }),
+    R({ name: 'big', repo: 'a/big', stars: 20000 }),
+    R({ name: 'mid', repo: 'a/mid', stars: 300 }),
+    R({ name: 'six', repo: 'a/six', stars: 6 }),
+  ]
+  const { top, rest, starsKnown } = rankRecos(items, 10)
+  assert.equal(starsKnown, true)
+  assert.deepEqual(top.map(x => x.name), ['big', 'mid'])
+  assert.deepEqual(rest.map(x => x.name), ['six', 'zero']) // 별이 적은 것은 추천에서 빠지고 나머지로 내려간다
+  assert.deepEqual(rankRecos(items, 10, 1).top.map(x => x.name), ['big']) // 1개만 뽑을 수도 있다
+})
+
+test('rankRecos: 별 0개·1개는 절대 추천이 되지 않는다', () => {
+  const items = [R({ name: 'zero', repo: 'a/zero', stars: 0 }), R({ name: 'one', repo: 'a/one', stars: 1 })]
+  assert.deepEqual(rankRecos(items, 10).top, [])
+  assert.deepEqual(rankRecos(items, 0).top.map(x => x.name), ['one', 'zero']) // 기준을 0으로 내리면 뽑힌다 (사용자가 정한 경우만)
+})
+
+test('rankRecos: 검토된 출처는 별이 적어도 추천 후보가 된다', () => {
+  const items = [
+    R({ name: 'official', repo: 'o/official', tier: 'official', stars: 4 }),
+    R({ name: 'popular', repo: 'p/popular', stars: 5000 }),
+    R({ name: 'tiny', repo: 't/tiny', stars: 2 }),
+  ]
+  assert.deepEqual(rankRecos(items, 10).top.map(x => x.name), ['popular', 'official'])
+})
+
+test('rankRecos: 별을 아직 모르면 추천을 뽑지 않고, 출처 → 관련도 순으로 둔다', () => {
+  const items = [
+    R({ name: 'listed', repo: 'a/listed', rel: 9 }),
+    R({ name: 'anthropic', repo: 'a/an', tier: 'anthropic', rel: 1 }),
+    R({ name: 'listed2', repo: 'a/l2', rel: 3 }),
+  ]
+  const r = rankRecos(items, 10)
+  assert.equal(r.starsKnown, false)
+  assert.deepEqual(r.top, [])
+  assert.deepEqual(r.rest.map(x => x.name), ['anthropic', 'listed', 'listed2'])
+})
+
+test('relevance: 이름·주제 3점, 설명 앞부분 2점, 설명 뒤쪽 1점', () => {
+  const t = ['pdf', 'docx']
+  assert.equal(relevance('pdf-mcp', 'Read things', t), 3) // 이름에 있다
+  assert.equal(relevance('hyperframes', 'Write HTML. Render it.', ['video'], ['html-to-video', 'ffmpeg']), 3) // 만든 사람이 붙인 주제에 있다
+  assert.equal(relevance('graphify', 'A knowledge graph tool', ['pdf'], ['ast', 'rag']), 0)
+  assert.equal(relevance('Kami', 'Layout rules and templates for PDF reports', t), 2) // 설명 앞부분
+  const late = 'Turn any codebase, with its docs, SQL schemas, configs, images and other files into a knowledge graph you can query, and export it as a PDF'
+  assert.ok(late.toLowerCase().indexOf('pdf') > 100)
+  assert.equal(relevance('graphify', late, t), 1) // 설명 뒤쪽에서만 언급: 곁다리
+  assert.equal(relevance('x', 'nothing here', t), 0)
+  assert.equal(relevance('X', 'DOCX files', t), 2) // 대소문자를 가리지 않는다
+})
+
+test('rankRecos: 별이 아무리 많아도 검색어가 곁다리로만 나오는 것은 추천 1·2위가 되지 않는다', () => {
+  const items = [
+    R({ name: 'graphify', repo: 'g/graphify', stars: 148000, rel: 2 }), // PDF를 입력 형식 중 하나로 언급
+    R({ name: 'tail', repo: 't/tail', stars: 900000, rel: 1 }), // 설명 끝에서만 언급
+    R({ name: 'pdf-mcp', repo: 'p/pdf-mcp', stars: 171, rel: 3 }),
+    R({ name: 'compdf-skills', repo: 'c/compdf', stars: 110, rel: 3 }),
+  ]
+  const { top, rest } = rankRecos(items, 10)
+  assert.deepEqual(top.map(x => x.name), ['pdf-mcp', 'compdf-skills']) // 밝힌 것(3점)이 별 수가 훨씬 많은 2점보다 먼저
+  assert.deepEqual(rest.map(x => x.name), ['tail', 'graphify']) // 사라지지는 않고 나머지로 내려간다
+})
+
+test('rankRecos: 밝힌 것(3점)이 모자라면 설명 앞부분 언급(2점)으로 채운다', () => {
+  const items = [
+    R({ name: 'named', repo: 'n/named', stars: 50, rel: 3 }),
+    R({ name: 'lead', repo: 'l/lead', stars: 5000, rel: 2 }),
+    R({ name: 'late', repo: 'a/late', stars: 90000, rel: 1 }),
+  ]
+  assert.deepEqual(rankRecos(items, 10).top.map(x => x.name), ['named', 'lead'])
+})
+
+test('isLowStars: 검토되지 않았고 별이 기준보다 적은 것만', () => {
+  assert.equal(isLowStars({ tier: 'listed', stars: 1 }, 10), true)
+  assert.equal(isLowStars({ tier: 'github', stars: 9 }, 10), true)
+  assert.equal(isLowStars({ tier: 'github', stars: 10 }, 10), false)
+  assert.equal(isLowStars({ tier: 'partner', stars: 0 }, 10), false) // 검토된 출처
+  assert.equal(isLowStars({ tier: 'listed' }, 10), false) // 별을 모르면 낮다고 단정하지 않는다
+})
+
+test('mergeRecos: 같은 저장소는 한 건으로, 별은 GitHub 값을 따른다', () => {
+  const local = [R({ name: 'Remotion', repo: 'Remotion-Dev/claude-code-plugin', tier: 'listed', cmd: 'claude plugin marketplace add remotion-dev/claude-code-plugin', rel: 10 })]
+  const github = [
+    R({ name: 'remotion-dev/claude-code-plugin', repo: 'remotion-dev/claude-code-plugin', tier: 'github', source: 'github', stars: 83, forks: 35, flags: ['noLicense'], rel: 0 }),
+    R({ name: 'other/repo', repo: 'other/repo', tier: 'github', source: 'github', stars: 500, rel: 0 }),
+  ]
+  const m = mergeRecos(local, github)
+  assert.equal(m.length, 2)
+  const one = m.find(x => x.repo.toLowerCase() === 'remotion-dev/claude-code-plugin')
+  assert.equal(one.name, 'Remotion') // 이름은 디렉터리 쪽
+  assert.equal(one.stars, 83) // 별은 GitHub 쪽
+  assert.equal(one.tier, 'listed') // 출처 등급은 더 높은 쪽(listed > github)
+  assert.equal(one.rel, 10)
+  assert.deepEqual(one.flags, ['noLicense'])
+  assert.ok(one.cmd.startsWith('claude plugin marketplace add'))
 })
 
 test('githubFlags: 주의 신호', () => {

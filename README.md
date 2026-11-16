@@ -39,7 +39,7 @@ So I built a panel that "shows the tools you used, helps you find the ones you n
 - **Tokens**: no model is used to scan files. A model is used only for translation (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety rules have their own test file (7 tests) and were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (23 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -58,7 +58,7 @@ claude plugin install ai-tool-tracker --marketplace newpy15/ai-tool-tracker
 `/plugin` does not work in the desktop app, so there: click **+** next to the input box → **Plugins** → **Add marketplace**, enter `newpy15/ai-tool-tracker` → **Add plugin**.
 
 - When asked "Add marketplace?" answer `y`. For the scope, the first one (user) is usually right.
-- Right after installing you may see a note that "1 setting (language) is not set yet". It works with the default (Korean), so you can leave it, and you can change the language later in the **Environment** tab of the panel.
+- Right after installing you may see a note that "2 settings (language, minimum stars) are not set yet". It works with the defaults (Korean, 10 stars), so you can leave them, and you can change both later in the **Environment** tab of the panel.
 - It becomes active as soon as it is installed. If you don't see the panel, type `/ai-tools` in the input box. If it still doesn't show up, quit Claude Code completely and start it again.
 
 ### Say what you want to build
@@ -74,7 +74,7 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 | Input | What it does |
 | --- | --- |
 | `/ai-tools` | Opens the panel and re-reads the installed tools. Type it once after installing or removing a plugin. |
-| `/ai-find video production` | Finds tools for the feature you want. It searches both the directory on your PC and GitHub, and the results appear in the **Suggestions** tab. With several topics (`video pdf`) it shows each topic separately. |
+| `/ai-find video production` | Finds tools for the feature you want. It searches both the directory on your PC and GitHub, checks the star counts for you, and shows the results in the **Suggestions** tab. With several topics (`video pdf`) it shows each topic separately. |
 | `/ai-log image-tool logo draft` | Records a tool you used outside Claude Code by hand. (Tools used outside cannot be detected automatically.) |
 
 - If you say something with a topic in it during a normal conversation, like "make me a video" or "make a pdf", a notification appears and results pile up in the **Suggestions** tab. This reads only the directory on your PC. The same topic is announced at most once every 10 minutes, and nothing is announced if you already have everything that matched.
@@ -95,6 +95,7 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 | See which tools were just used | the **Live log** tab |
 | Understand what a plugin does | the **Tools** tab, click its name to expand it |
 | Switch off plugins you don't use, to cut tokens | the **Tools** tab → the `Turn off` button on the plugin's row (see "Cautions" below) |
+| Switch off or on many plugins at once | the **Tools** tab → `Turn all off` / `Turn all on`, or `Turn this group off` on a group such as Video (it asks first) |
 | Find tools for what you want to build | say it, or `/ai-find what you want` → the **Suggestions** tab |
 | Change the screen language | the language buttons at the top of the **Environment** tab |
 | The list didn't change after installing or removing a plugin | `/ai-tools` |
@@ -125,9 +126,10 @@ ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches**
 | Piece | File | What it does |
 | --- | --- | --- |
 | Hooks module | `hooks/register.tsx` | Registers the hooks below, reads your installed tools, draws the panel and runs the buttons. |
-| Trust rules | `hooks/trust.ts` | Pure functions that clean text written by other people, make safe names, commands and links, decide the source tier, and raise caution flags. No Claude Code needed to test them. |
+| Trust rules | `hooks/trust.ts` | Pure functions that clean text written by other people, make safe names, commands and links, decide the source tier, raise caution flags, and rank suggestions by relevance and stars. No Claude Code needed to test them. |
+| Categories | `hooks/categories.ts` | Pure functions that group plugins and skills by purpose (video, captions & voice, planning & docs, ...) from the words in their names and descriptions. |
 | State types | `types/index.d.ts` | The shape of what the panel keeps (log, tabs, suggestions). |
-| Tests | `test/trust.test.mjs` | The safety rules, run with `node --test test/`. |
+| Tests | `test/trust.test.mjs`, `test/categories.test.mjs` | The safety, ranking and category rules, run with `node --test test/`. |
 | Install files | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | What `claude plugin install … --marketplace newpy15/ai-tool-tracker` reads. |
 
 ### What each hook does
@@ -150,10 +152,11 @@ ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches**
 ### How one suggestion is made
 
 1. A topic is recognized from a dictionary (for example "video", "pdf", "slides").
-2. The directory on your PC and the marketplaces you added are searched. Results are ranked by how well they match, with a small bonus for a more verified source.
-3. Only if you press the button (or type `/ai-find`), GitHub is searched by topic (`claude-code-plugin`, `claude-skills`, `claude-code`) and the results are merged. Only one search word is sent.
-4. Every result goes through the trust check (below): its source tier, owner and caution flags are decided, and its link and install command are rebuilt from verified parts.
-5. The Suggestions tab shows the result. Nothing is installed.
+2. The directory on your PC and the marketplaces you added are searched. Each result is given a relevance score: 3 if the topic word is in its name, 2 if it is at the start of its description, 1 if it is mentioned only later.
+3. Star counts are fetched from GitHub when you press `Check star counts` (or type `/ai-find`, which does it for you). One search asks for up to 6 repositories at a time, and only the public repository names (`owner/repo`) are sent.
+4. Only if you press the GitHub button (or type `/ai-find`), GitHub is also searched by topic (`claude-code-plugin`, `claude-skills`, `claude-code`) with the best matches first, and results that do not mention the topic are dropped. Only one search word is sent.
+5. Directory and GitHub results are merged by repository. The **2 picks with the most stars** are shown first, as "Recommended". Only candidates that are named or tagged for the topic (relevance 3) come first, then ones that mention it at the start of the description (relevance 2). Unreviewed repositories with fewer stars than the minimum (10 by default) are never picked and carry a warning. Everything else sits behind `Show the other N`.
+6. Every result goes through the trust check (below): its source tier, owner and caution flags are decided, and its link and install command are rebuilt from verified parts. Nothing is installed.
 
 ### What is kept, and where
 
@@ -167,30 +170,33 @@ The panel has four tabs.
 
 | Tab | What it does |
 | --- | --- |
-| **Tools** | Shows the **plugins** and **skills** installed on your PC with descriptions. Plugins can be turned on and off, and clicking a name expands the skills, agents and MCP servers inside it. For skills it also shows how to call them with `/name`. |
+| **Tools** | Shows the **plugins** and **skills** installed on your PC with descriptions, **grouped by purpose** (Video, Captions & voice, Images & design, Planning & docs, Web & browser, Dev & deploy, Data & databases, Security, Files & cloud, Marketing & social, Other). Click a group name to fold it. Plugins can be turned on and off one by one, **by group, or all at once**, and clicking a name expands the skills, agents and MCP servers inside it. For skills it also shows how to call them with `/name`. |
 | **Live log** | Stacks the tools used while you work (skills, plugins, file edits, commands, subagents and so on) in time order, grouped by kind, with a one-line description of "what this tool is for". |
-| **Suggestions** | When you say something like "make a video and a pdf", it recognizes the topic (video, documents, ...) and shows matching tools per topic. It searches the plugin directory stored on your PC first, and when you press a button it searches GitHub live for more. |
-| **Environment** | Language choice, what it read on your PC ("Detected environment"), translation progress, removing old cached versions, and moving tools that only work in one folder to global. |
+| **Suggestions** | When you say something like "make a video and a pdf", it recognizes the topic (video, documents, ...) and shows matching tools per topic. It searches the plugin directory stored on your PC first, and when you press a button it checks star counts and searches GitHub live for more. For each topic it **recommends the 1–2 candidates with the most stars**; the rest are folded away. |
+| **Environment** | Language choice, the minimum stars needed to be recommended, what it read on your PC ("Detected environment"), translation progress, removing old cached versions, and moving tools that only work in one folder to global. |
 
 ### Example: "make a video and a pdf"
 
-What the **Suggestions** tab lists, in two groups (an illustration computed with the same ranking rules from the plugin directory on the author's PC on 2026-11-16; it is not an endorsement, and anything you already have installed is tagged `installed`):
+What the **Suggestions** tab shows after the star counts are checked (an illustration made with the same ranking rules and real GitHub star counts on 2026-11-16; star counts change, it is not an endorsement, and the source tier and owner are shown on every row):
 
 ```text
 Video  (search: video, remotion, animation, motion)
-  Remotion                              [Listed in directory · not reviewed]  Owner: remotion-dev
-  AI Video Editor & Timeline            [Listed in directory · not reviewed]  Owner: clipwave-io
-  video-shotcraft                       [Listed in directory · not reviewed]  Owner: vincentwei1021
-  Motion Reel                           [Listed in directory · not reviewed]  Owner: aries-spring
+  Recommended · the 2 with the most stars
+    Pick #1  heygen-com/hyperframes        ★84,873   renders video from HTML
+    Pick #2  latent-spaces/brag            ★21,632   turns a project into a short launch video
+  Show the other 13
+    for example video-shotcraft ★20,245, Remotion ★83, and
+    Motion Reel ★6 and AI Video Editor & Timeline ★0, which carry a "too few stars" warning
 
 Documents  (search: pdf, docx, xlsx)
-  PDF Viewer                            [Reviewed by Anthropic]               Owner: anthropics
-  DevExpress Office & PDF File API      [Reviewed (partner)]                  Owner: devexpress
-  carbone-skill                         [Official marketplace]                Owner: carboneio
-  Pdf To Excel                          [Listed in directory · not reviewed]  Owner: cavada76
+  Recommended · the 2 with the most stars
+    Pick #1  PDF Viewer                    ★36,230   [Reviewed by Anthropic]   views and annotates PDFs
+    Pick #2  yusufkaraaslan/Skill_Seekers  ★15,324   turns documentation sites and PDFs into skills
+  Show the other 14
+    for example Pdf To Excel ★0, which carries a "too few stars" warning
 ```
 
-Each row also has the description, caution flags, an `Open link` button and a `Copy install command` button that shows the exact command.
+For comparison, before star counts were used the second video suggestion was a repository with **0 stars**. Each row also has the owner, the description, caution flags, an `Open link` button and a `Copy install command` button that shows the exact command.
 
 ## Can I trust the suggested links?
 
@@ -207,7 +213,7 @@ The names, descriptions and addresses in the suggestion list are all **text writ
 | Unverified source (GitHub search) | Came from a GitHub search. If it is also in the directory, it takes that tier |
 
 - **The owner (GitHub account) is always shown.** Look-alike names really exist. For example the owner of `Figma` is the official `figma`, but a name like "figma-suite" belongs to another individual account. Check that the owner is right first.
-- **GitHub results carry caution flags.** Not updated for over a year, less than 30 days old, no license, a fork of another repository, very few forks for its star count (star counts can be faked). Results are ordered by source tier, then fewer caution flags, then star count.
+- **GitHub results carry caution flags.** Not updated for over a year, less than 30 days old, no license, a fork of another repository, very few forks for its star count (star counts can be faked). Recommendations are ordered by how well they match the topic, then by star count (see "How one suggestion is made"); the source tier and caution flags are shown on every row.
 
 **Other people's text is not trusted as it is**
 
@@ -231,6 +237,8 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 - **"Move to global" is a copy.** The original stays, and deleting the original is a separate confirmation. If you edit the original after copying, the copy is not updated automatically.
 - **Suggestions do not guarantee safety.** Before installing, check that the owner is right, and read the repository code and the permissions it asks for.
 - **Be careful with `Turn off`.** If you switch off a plugin you are using, that feature is gone from the next start. Press `Turn on` to bring it back.
+- **`Turn all off` and `Turn this group off` ask for confirmation first**, never switch off this plugin itself, and take effect the next time Claude Code starts. Turning plugins back on works the same way.
+- **Stars measure popularity, not quality.** Star counts can be inflated, and a popular tool can still be the wrong one for you. Read the description and check the owner. A repository with few stars is not necessarily bad, it just has little evidence behind it.
 - Turning on and off, moving, and install-related features use the `claude` command. They may fail where this command is missing (for example if you only use the desktop app). "Detected environment" in the Environment tab shows whether it is available.
 - This plugin uses a part of Claude Code's plugin features that is still early. If Claude Code is updated, the behavior may change.
 
@@ -239,7 +247,7 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 **What it reads**: the install records, skill files, settings, the plugin directory cache and the list of known projects in Claude's config folder (`~/.claude`, or wherever `CLAUDE_CONFIG_DIR` points).
 
 **What goes out over the internet**
-- GitHub search: **only when you press the button in the Suggestions tab or type `/ai-find`**, one search word such as `video` goes to `api.github.com`. Your conversation and login information are not sent.
+- GitHub: **only when you press a button in the Suggestions tab or type `/ai-find`**, one search word such as `video` and, for the star check, the public names (`owner/repo`) of the repositories being suggested go to `api.github.com`. Your conversation and login information are not sent.
 - Model calls: only the two cases written in "How many tokens does it use?" above.
 - The original text of what you said is neither saved nor sent. Only the detected topic and search words are used.
 
@@ -256,7 +264,8 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 - **Suggestions depend on the plugin directory file stored on your PC (`plugin-directory-cache-v2.json`).** If the file is missing or renamed, it searches only the marketplaces you added. GitHub search works either way.
 - Suggestions recognize topics with a word dictionary. A topic that is not in the dictionary can be missed (then use `/ai-find what you want`), and a high star count does not mean a good tool.
 - **The source tier and caution flags are decided only from values in the directory record and the GitHub response.** It does not read the repository code to check that it is safe. A correct owner name does not mean the code is safe.
-- GitHub search is used without logging in, so it is limited to 10 searches per minute.
+- GitHub search is used without logging in, so it is limited to 10 searches per minute. `/ai-find` uses up to 4 searches per topic (1 star check and 3 topic searches), so with three topics at once you may have to wait a minute.
+- A topic is recognized by a dictionary and relevance is judged from the words in names, descriptions and repository topics. A repository that does the job but describes it in other words can be ranked lower.
 - Translation quality depends on the model. If you find an awkward translation, please tell me.
 
 ## When something goes wrong

@@ -68,6 +68,115 @@ export const tierRank = (t: Tier): number =>
 export const tierBonus = (t: Tier): number =>
   ({ official: 3, anthropic: 3, partner: 2, added: 1, listed: 0, github: 0 })[t]
 
+/** 디렉터리가 검토했거나 공식 마켓플레이스에 든 출처 (별이 적어도 별 기준으로 거르지 않는다) */
+export const isVerifiedTier = (t: string): boolean => t === 'official' || t === 'anthropic' || t === 'partner'
+
+/** 순위를 매기고 합치는 데 쓰는 추천 한 건의 값 */
+export type Reco = {
+  id: string
+  name: string
+  summary: string
+  repo: string
+  owner: string
+  tier: string
+  flags: string[]
+  installed: boolean
+  stars?: number
+  forks?: number
+  pushed?: string
+  lic?: string
+  cmd: string
+  source: 'dir' | 'github'
+  /** 검색어와 얼마나 맞는지 (이름에 든 단어 3점, 설명에 든 단어 1점) */
+  rel: number
+}
+
+/** 추천 1·2위 후보가 되려면 이 점수 이상이어야 한다: 이름·저장소 주제·설명 앞부분 중 어딘가에 검색어가 있어야 한다 */
+export const MIN_REL = 2
+
+/**
+ * 검색어와 얼마나 맞는지:
+ *  - 3점: 이름이나 저장소가 스스로 붙인 주제(topics)에 검색어가 있다 (만든 사람이 그 일을 한다고 밝힌 것)
+ *  - 2점: 설명 앞부분(100자)에 있다
+ *  - 1점: 설명 뒤쪽에서만 언급된다 (곁다리일 때가 많다)
+ *  - 0점: 없다
+ * 예: "PDF"를 입력 파일 형식 중 하나로만 언급하는 코드 분석 도구가, 별이 많다는 이유로 PDF 도구 1위가 되지 않게 한다.
+ */
+export const relevance = (name: string, description: string, terms: string[], topics: string[] = []): number => {
+  const n = name.toLowerCase()
+  const d = description.toLowerCase()
+  const tp = topics.map(t => t.toLowerCase())
+  const ts = terms.map(t => t.toLowerCase()).filter(Boolean)
+  if (ts.some(t => n.includes(t) || tp.some(x => x.includes(t)))) return 3
+  if (ts.some(t => d.slice(0, 100).includes(t))) return 2
+  if (ts.some(t => d.includes(t))) return 1
+  return 0
+}
+
+/** 별이 있는데 기준(minStars)보다 적고, 검토된 출처도 아니라서 믿을 근거가 부족한 것 */
+export const isLowStars = (r: { tier: string; stars?: number }, minStars: number): boolean =>
+  !isVerifiedTier(r.tier) && r.stars !== undefined && r.stars < minStars
+
+/**
+ * 디렉터리 결과와 GitHub 결과를 저장소(owner/repo)별로 한 건으로 합친다.
+ * 이름·설명·명령은 디렉터리 쪽을, 별·갈라 쓴 수·갱신일·라이선스 같은 실측값은 GitHub 쪽을 따르고, 출처 등급은 더 높은 쪽을 따른다.
+ */
+export const mergeRecos = (local: Reco[], github: Reco[]): Reco[] => {
+  const out = new Map<string, Reco>()
+  const key = (r: Reco) => (r.repo ? r.repo.toLowerCase() : `id:${r.id}`)
+  for (const r of local) out.set(key(r), { ...r })
+  for (const g of github) {
+    const k = key(g)
+    const d = out.get(k)
+    if (!d) {
+      out.set(k, { ...g })
+      continue
+    }
+    out.set(k, {
+      ...d,
+      stars: g.stars ?? d.stars,
+      forks: g.forks ?? d.forks,
+      pushed: g.pushed || d.pushed,
+      lic: g.lic || d.lic,
+      flags: g.flags.length > 0 ? g.flags : d.flags,
+      tier: tierRank(g.tier as Tier) > tierRank(d.tier as Tier) ? g.tier : d.tier,
+      installed: d.installed || g.installed,
+      cmd: d.cmd || g.cmd,
+      rel: Math.max(d.rel, g.rel),
+    })
+  }
+  return [...out.values()]
+}
+
+/**
+ * 별이 가장 많은 순으로 정하고, 위에서 topN개를 "추천"으로 뽑는다.
+ *  - 별을 아는 것이 먼저, 별이 같으면 출처가 확인된 것, 그다음 검색어와 더 맞는 것
+ *  - 추천 후보는 (검토된 출처이거나 별이 minStars 이상) 이면서 검색어와 충분히 맞는 것(rel ≥ MIN_REL)만.
+ *    이름·주제로 밝힌 것(rel 3)이 설명 앞부분 언급(rel 2)보다 먼저다. 나머지는 아래로 내려간다
+ *  - 별을 하나도 모르면(아직 확인 전) 추천을 뽑지 않고 출처·관련도 순으로만 둔다
+ */
+export const rankRecos = <T extends Reco>(
+  items: T[],
+  minStars: number,
+  topN = 2,
+): { top: T[]; rest: T[]; starsKnown: boolean } => {
+  const starsKnown = items.some(i => i.stars !== undefined)
+  const sorted = [...items].sort((a, b) => {
+    const ka = a.stars !== undefined, kb = b.stars !== undefined
+    if (ka !== kb) return ka ? -1 : 1
+    if (ka && kb && a.stars !== b.stars) return (b.stars ?? 0) - (a.stars ?? 0)
+    return tierRank(b.tier as Tier) - tierRank(a.tier as Tier) || b.rel - a.rel
+  })
+  if (!starsKnown) return { top: [], rest: sorted, starsKnown }
+  const eligible = (i: T) => isVerifiedTier(i.tier) || (i.stars !== undefined && i.stars >= minStars)
+  // 이름·주제로 그 일을 한다고 밝힌 것(3점)을 먼저, 모자라면 설명 앞부분에 언급한 것(2점)으로 채운다. 각각 별이 많은 순.
+  const strong = sorted.filter(i => eligible(i) && i.rel >= 3)
+  const weak = sorted.filter(i => eligible(i) && i.rel >= MIN_REL && i.rel < 3)
+  const top = [...strong, ...weak].slice(0, topN)
+  const picked = new Set(top)
+  return { top, rest: sorted.filter(i => !picked.has(i)), starsKnown }
+}
+
 const DAY = 24 * 60 * 60 * 1000
 
 /** GitHub 검색 결과 한 건에서 주의 신호를 뽑는다. 호출 없이 응답에 든 값만 쓴다 */

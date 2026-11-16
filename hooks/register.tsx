@@ -3,9 +3,12 @@ import type { Register } from 'claude-code'
 
 import type { RecoGroup, RecoItem, RecoState, Use } from '../types'
 import {
-  clean, githubFlags, githubLink, ownerOf, repoFromUrl, safeName, safeRepo, tierBonus, tierFromReview, tierRank,
+  clean, githubFlags, githubLink, isLowStars, mergeRecos, ownerOf, rankRecos, relevance, repoFromUrl, safeName,
+  safeRepo, tierBonus, tierFromReview, tierRank,
 } from './trust'
 import type { Tier } from './trust'
+import { categorize, CATEGORY_ORDER } from './categories'
+import type { CatKey } from './categories'
 
 const PANE = 'ai-tools'
 
@@ -26,7 +29,7 @@ const subState = atom({ plugin: 'ai-tool-tracker', key: 'sub' } as const, 'plugi
 // 추천 탭에 보여줄 결과 (프롬프트 원문은 저장하지 않는다: 주제와 검색어만)
 const EMPTY_RECO: RecoState = { groups: [], at: 0 }
 const recoState = atom({ plugin: 'ai-tool-tracker', key: 'reco' } as const, EMPTY_RECO, {
-  shape: 'reco-3', // 항목의 모양(등급·소유자·신호)을 바꿨으므로 태그도 올린다: 이전 버전이 저장한 값을 버리게 한다
+  shape: 'reco-4', // 항목의 모양(관련도·갈라 쓴 수)과 묶음의 모양(별 확인 상태)을 바꿨으므로 태그도 올린다: 이전 버전이 저장한 값을 버리게 한다
 })
 // 펼쳐진 항목 이름 -> true
 const open = atom({ plugin: 'ai-tool-tracker', key: 'open' } as const, {}, {
@@ -60,6 +63,7 @@ const CATALOG: Entry[] = [
 // 설명 문구는 언어가 다르면 모델로 한 번 번역해 저장해 둔다.
 // ---------------------------------------------------------------------------
 let lang = 'ko'
+let minStars = 10 // 이보다 별이 적고 검토되지 않은 것은 추천하지 않는다 (환경 탭에서 바꿀 수 있다)
 // 번역 저장소: 언어마다 따로 둔다. (하나를 같이 쓰면 언어를 바꾸는 사이 다른 언어 결과가 섞인다)
 const tmaps: Record<string, Record<string, string>> = {}
 const loadedLangs = new Set<string>()
@@ -174,16 +178,49 @@ const UI = {
     modLabel: '모드(이 세션 전용)',
     askMod: '전체 설치용 폴더(~/.claude/local-mods)에 복사해 모든 프로젝트에서 쓰도록 설치할까요? 이후 원본을 고쳐도 자동 반영되지 않습니다.',
     modKeep: '세션 폴더의 원본은 지우지 않았습니다. 다음 세션부터 전체 설치본이 쓰입니다.',
+    allOn: '전체 켜기',
+    allOff: '전체 끄기',
+    groupOn: '이 묶음 켜기',
+    groupOff: '이 묶음 끄기',
+    bulkAskOn: (n: number) => `플러그인 ${n}개를 켭니다. 다음에 Claude Code를 시작할 때부터 적용됩니다. 계속할까요?`,
+    bulkAskOff: (n: number) =>
+      `플러그인 ${n}개를 끕니다. 다음에 Claude Code를 시작할 때부터 적용되고, 켜기로 되돌릴 수 있습니다. 이 플러그인(ai-tool-tracker)은 끄지 않습니다. 계속할까요?`,
+    bulkRun: (i: number, n: number) => `처리 중… ${i}/${n}`,
+    bulkDone: (n: number) => `${n}개를 바꿨습니다. 다음에 Claude Code를 시작할 때부터 적용됩니다.`,
+    catg_video: '영상',
+    catg_captions: '자막·음성',
+    catg_image: '이미지·디자인',
+    catg_planning: '기획·문서',
+    catg_web: '웹·브라우저',
+    catg_dev: '개발·배포',
+    catg_data: '데이터·DB',
+    catg_security: '보안',
+    catg_files: '파일·클라우드',
+    catg_marketing: '마케팅·SNS',
+    catg_other: '기타',
+    recoPick: (n: number) => `추천 ${n}위`,
+    recoTop: (n: number) => `추천 · 별이 가장 많은 ${n}개`,
+    recoRestShow: (n: number) => `나머지 ${n}개 보기`,
+    recoRestHide: '나머지 숨기기',
+    recoNoTop: (m: number) => `별 ${m}개 이상인 후보가 없어 추천할 수 없습니다. 아래 후보는 별이 적습니다.`,
+    recoStarsUnknown: '별 개수를 아직 확인하지 않았습니다. 별이 가장 많은 것을 추천하려면 아래 버튼으로 확인하세요.',
+    recoStarsBtn: '별 개수 확인',
+    recoStarsChecking: '별 개수를 확인하는 중…',
+    fewStars: (n: number, m: number) =>
+      `별 ${n}개 — 기준(${m}개)보다 적어, 아직 아는 사람이 거의 없습니다. 믿을 근거가 부족합니다.`,
+    starsUnknown: '별: 확인 전',
+    minStarsLabel: '추천에 필요한 최소 별 개수',
+    minStarsHint: '검토되지 않은 저장소는 별이 이 개수보다 적으면 추천하지 않습니다. 0이면 거르지 않습니다.',
     tabReco: (n: number) => (n > 0 ? `추천 (${n})` : '추천'),
     recoTitle: '이런 도구는 어때요?',
     recoNone: '아직 추천할 내용이 없습니다. "동영상 만들어줘"처럼 요청하거나 /ai-find 동영상 제작 처럼 검색해 보세요.',
     recoTopic: (c: string, t: string) => `감지한 주제: ${c} · 검색어: ${t}`,
     recoTopicFree: (t: string) => `검색어: ${t}`,
-    recoLocalTitle: '검토된 플러그인 디렉터리 (이 PC에 받아 둔 목록)',
     recoLocalNone: '디렉터리에서 맞는 플러그인을 찾지 못했습니다.',
     recoGithubTitle: 'GitHub 실시간 검색',
     recoGithubBtn: (t: string) => `GitHub에서 더 찾기: ${t}`,
-    recoSending: (t: string) => `누르면 검색어 "${t}"만 GitHub로 전송됩니다. 대화 내용은 보내지 않습니다.`,
+    recoSending: (t: string) =>
+      `누르면 검색어 "${t}"와 위 추천 저장소의 이름(owner/repo)이 GitHub로 전송됩니다. 대화 내용은 보내지 않습니다.`,
     recoSearching: 'GitHub에서 찾는 중…',
     recoGhNone: 'GitHub에서 맞는 저장소를 찾지 못했습니다.',
     recoGhErr: (m: string) => `GitHub 검색 실패: ${m}`,
@@ -304,16 +341,49 @@ const UI = {
     modLabel: 'mod (this session only)',
     askMod: 'Copy it to ~/.claude/local-mods and install it for every project? Later edits to the original are not synced.',
     modKeep: 'The original in the session folder is untouched. The global install is used from the next session.',
+    allOn: 'Turn all on',
+    allOff: 'Turn all off',
+    groupOn: 'Turn this group on',
+    groupOff: 'Turn this group off',
+    bulkAskOn: (n: number) => `This turns ${n} plugins on. It takes effect the next time Claude Code starts. Continue?`,
+    bulkAskOff: (n: number) =>
+      `This turns ${n} plugins off. It takes effect the next time Claude Code starts, and you can turn them back on. This plugin (ai-tool-tracker) is not turned off. Continue?`,
+    bulkRun: (i: number, n: number) => `Working… ${i}/${n}`,
+    bulkDone: (n: number) => `Changed ${n}. It takes effect the next time Claude Code starts.`,
+    catg_video: 'Video',
+    catg_captions: 'Captions & voice',
+    catg_image: 'Images & design',
+    catg_planning: 'Planning & docs',
+    catg_web: 'Web & browser',
+    catg_dev: 'Dev & deploy',
+    catg_data: 'Data & databases',
+    catg_security: 'Security',
+    catg_files: 'Files & cloud',
+    catg_marketing: 'Marketing & social',
+    catg_other: 'Other',
+    recoPick: (n: number) => `Pick #${n}`,
+    recoTop: (n: number) => `Recommended · the ${n} with the most stars`,
+    recoRestShow: (n: number) => `Show the other ${n}`,
+    recoRestHide: 'Hide the others',
+    recoNoTop: (m: number) => `No candidate has ${m} or more stars, so nothing can be recommended. The candidates below have few stars.`,
+    recoStarsUnknown: 'Star counts have not been checked yet. Check them with the button below to recommend the ones with the most stars.',
+    recoStarsBtn: 'Check star counts',
+    recoStarsChecking: 'Checking star counts…',
+    fewStars: (n: number, m: number) =>
+      `${n} stars, fewer than the minimum (${m}). Hardly anyone knows it yet, so there is little reason to trust it.`,
+    starsUnknown: 'Stars: not checked yet',
+    minStarsLabel: 'Minimum stars to recommend',
+    minStarsHint: 'Unreviewed repositories with fewer stars than this are not recommended. 0 turns the check off.',
     tabReco: (n: number) => (n > 0 ? `Suggestions (${n})` : 'Suggestions'),
     recoTitle: 'How about these tools?',
     recoNone: 'Nothing to suggest yet. Ask for something like "make a video", or search with /ai-find video.',
     recoTopic: (c: string, t: string) => `Detected topic: ${c} · search: ${t}`,
     recoTopicFree: (t: string) => `Search: ${t}`,
-    recoLocalTitle: 'Reviewed plugin directory (the list stored on this PC)',
     recoLocalNone: 'No matching plugin found in the directory.',
     recoGithubTitle: 'Live GitHub search',
     recoGithubBtn: (t: string) => `Search GitHub for more: ${t}`,
-    recoSending: (t: string) => `Pressing sends only the search words "${t}" to GitHub. Your conversation is not sent.`,
+    recoSending: (t: string) =>
+      `Pressing sends the search word "${t}" and the names (owner/repo) of the repositories above to GitHub. Your conversation is not sent.`,
     recoSearching: 'Searching GitHub…',
     recoGhNone: 'No matching repository found on GitHub.',
     recoGhErr: (m: string) => `GitHub search failed: ${m}`,
@@ -426,6 +496,8 @@ type Item = {
   children: { name: string; summary: string }[]
   agents: string[]
   mcp: string[]
+  /** 용도별 묶음 (영상, 자막·음성, 기획·문서 …) */
+  cat: CatKey
 }
 // 특정 폴더에서만 쓸 수 있는 스킬·플러그인
 type FolderItem = {
@@ -522,10 +594,10 @@ const scan = async ($: any): Promise<Index> => {
           )
           if (!text) return undefined
           const fm = parseFront(text)
-          return { name: fm.name ?? en.name, dir: en.name as string, summary: summarize(fm.description ?? '') }
+          return { name: fm.name ?? en.name, dir: en.name as string, summary: summarize(fm.description ?? ''), desc: clean(fm.description ?? '', 300) }
         }),
     )
-    return found.filter((x): x is { name: string; dir: string; summary: string } => !!x)
+    return found.filter((x): x is { name: string; dir: string; summary: string; desc: string } => !!x)
   }
 
   // 플러그인의 스킬: skills/ 아래, 없으면 플러그인 폴더 바로 아래 (구조가 다른 플러그인도 읽는다)
@@ -546,6 +618,7 @@ const scan = async ($: any): Promise<Index> => {
       const lead = list.find(s => s.name.includes('best-practices')) ?? list[0]
       items.push({
         where: '', key: '', enabled: true, name: pre, kind: 'skill', summary: lead.summary,
+        cat: categorize({ name: pre, description: lead.desc, skills: list.map(x => ({ name: x.name, description: x.desc })) }),
         skills: list.map(s => s.name),
         children: list.map(s => ({ name: s.name, summary: s.summary })),
         agents: [], mcp: [],
@@ -555,6 +628,7 @@ const scan = async ($: any): Promise<Index> => {
       const s = list[0]
       items.push({
         where: '', key: '', enabled: true, name: s.name, kind: 'skill', summary: s.summary,
+        cat: categorize({ name: s.name, description: s.desc, skills: [] }),
         skills: [s.name], children: [], agents: [], mcp: [],
       })
       skillOwner.set(s.name, s.name)
@@ -623,7 +697,7 @@ const scan = async ($: any): Promise<Index> => {
       const summary = summarize(desc) || skills[0]?.summary || ''
       const where =
         entry.scope && entry.scope !== 'user' && entry.projectPath ? norm(entry.projectPath) : ''
-      return { name, key, enabled: enabledMap[key] === true, summary, skills, agents, mcp, where }
+      return { name, key, enabled: enabledMap[key] === true, summary, skills, agents, mcp, where, desc }
     }),
   )
 
@@ -635,6 +709,12 @@ const scan = async ($: any): Promise<Index> => {
       enabled: pl.enabled,
       name: pl.name,
       kind: 'plugin',
+      cat: categorize({
+        name: pl.name,
+        description: clean(pl.desc, 300),
+        skills: pl.skills.map(x => ({ name: x.name, description: x.desc })),
+        agents: pl.agents.map(a => ({ name: a })),
+      }),
       summary: pl.summary,
       skills: pl.skills.map(s => s.name),
       children: pl.skills.map(s => ({ name: s.name, summary: s.summary })),
@@ -1216,6 +1296,7 @@ const searchLocal = (entries: DirEntry[], terms: string[], installed: Set<string
   return scored.slice(0, limit).map(({ e }) => ({
     id: `dir:${e.lname}`, name: clean(e.name, 80), summary: e.summary, repo: e.repo, owner: ownerOf(e.repo),
     tier: e.tier, flags: [], installed: installed.has(e.lname), cmd: e.cmd, source: 'dir' as const,
+    rel: relevance(e.name, e.summary, ts),
   }))
 }
 
@@ -1231,6 +1312,8 @@ const runGroups = async ($: any, specs: { cat: string; terms: string[] }[]): Pro
     local: searchLocal(entries, s.terms, installed, specs.length > 1 ? 4 : 6),
     github: [],
     ghStatus: 'idle',
+    starsStatus: 'idle',
+    showRest: false,
   }))
   for (const g of groups) for (const r of g.local) if (r.summary) recoTexts.add(r.summary)
   await update($, recoState, () => ({ groups, at: Date.now() }))
@@ -1261,7 +1344,8 @@ const toEnglishTerms = async ($: any, q: string): Promise<string[]> => {
 // GitHub 실시간 검색: 검색어만 보낸다. 로그인 정보나 대화 내용은 보내지 않는다.
 const githubFind = async ($: any, gi: number) => {
   const st = await read($, recoState)
-  const primary = (st.groups[gi]?.terms[0] ?? '').replace(/[^a-z0-9 .-]/gi, '').trim()
+  const terms = st.groups[gi]?.terms ?? []
+  const primary = (terms[0] ?? '').replace(/[^a-z0-9 .-]/gi, '').trim()
   if (!primary) return
   await setGroup($, gi, { ghStatus: 'searching', github: [] })
   try {
@@ -1270,7 +1354,8 @@ const githubFind = async ($: any, gi: number) => {
     let lastErr = ''
     for (const topic of ['claude-code-plugin', 'claude-skills', 'claude-code']) {
       const q = `${primary} topic:${topic} archived:false`
-      const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=6`
+      // 검색어와 가장 잘 맞는 순(기본 정렬)으로 가져온다. 별 순으로 가져오면 검색어가 곁다리로만 나오는 인기 저장소가 섞인다.
+      const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=10`
       const r = await $.http.fetch(url, {
         headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'ai-tool-tracker' },
       })
@@ -1293,19 +1378,126 @@ const githubFind = async ($: any, gi: number) => {
       return [{
         id: `gh:${repo}`, name: repo, summary: clean(i.description, 300), repo, owner: ownerOf(repo),
         tier: known ? known.tier : ('github' as Tier), flags: githubFlags(i), installed: installed.has(String(i.name ?? '').toLowerCase()),
-        stars: num(i.stargazers_count), pushed: clean(i.pushed_at, 10), lic: clean(i.license?.spdx_id, 30) || undefined,
+        stars: num(i.stargazers_count), forks: num(i.forks_count), pushed: clean(i.pushed_at, 10),
+        lic: clean(i.license?.spdx_id, 30) || undefined,
         cmd: installCmd('', '', repo), source: 'github' as const,
+        rel: relevance(
+          String(i.name ?? ''),
+          clean(i.description, 300),
+          terms,
+          Array.isArray(i.topics) ? i.topics.map((t: unknown) => String(t)) : [], // 저장소가 스스로 붙인 주제
+        ),
       }]
     })
-    // 별 수는 조작될 수 있어 마지막 기준이다: 출처 등급 > 주의 신호가 적은 것 > 별 수
-    const items = all
-      .sort((a, b) => tierRank(b.tier as Tier) - tierRank(a.tier as Tier) || a.flags.length - b.flags.length || (b.stars ?? 0) - (a.stars ?? 0))
-      .slice(0, 8)
+    // 이름이나 설명에 검색어가 있는 것만 남기고, 별이 많은 순으로 12개를 담는다.
+    // 추천 1·2위를 뽑는 순서는 화면에서 디렉터리 결과와 합쳐서 정한다.
+    const items = all.filter(x => x.rel >= 1).sort((a, b) => (b.stars ?? 0) - (a.stars ?? 0)).slice(0, 12)
     for (const it of items) if (it.summary) recoTexts.add(it.summary)
     await setGroup($, gi, { github: items, ghStatus: items.length > 0 ? 'done' : 'empty' })
     void translateAll($, idx)
   } catch (err: any) {
     await setGroup($, gi, { ghStatus: `error:${String(err?.message ?? err).slice(0, 100)}` })
+  }
+}
+
+const GH_HEADERS = { Accept: 'application/vnd.github+json', 'User-Agent': 'ai-tool-tracker' }
+
+// 저장소 이름들로 별·갈라 쓴 수·갱신일·라이선스를 한 번에 가져온다 (검색 한 번에 최대 6개). 보내는 것은 공개 저장소의 이름(owner/repo)뿐이다.
+const fetchRepoInfo = async ($: any, repos: string[]): Promise<Map<string, any>> => {
+  const out = new Map<string, any>()
+  const uniq = [...new Set(repos.map(r => safeRepo(r)).filter(Boolean).map(r => r.toLowerCase()))]
+  let i = 0
+  while (i < uniq.length) {
+    const chunk: string[] = []
+    let len = 0
+    // 검색어는 256자까지라, 길이를 보며 최대 6개씩 묶는다
+    while (i < uniq.length && chunk.length < 6 && len + uniq[i].length + 6 < 230) {
+      chunk.push(uniq[i])
+      len += uniq[i].length + 6
+      i++
+    }
+    if (chunk.length === 0) {
+      i++ // 너무 긴 이름은 건너뛴다
+      continue
+    }
+    const q = chunk.map(r => `repo:${r}`).join(' ')
+    const r = await $.http.fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=10`, {
+      headers: GH_HEADERS,
+    })
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}${r.status === 403 || r.status === 429 ? ' (rate limit, try again in a minute)' : ''}`)
+    }
+    for (const it of JSON.parse(r.text).items ?? []) {
+      const full = safeRepo(it.full_name)
+      if (full) out.set(full.toLowerCase(), it)
+    }
+  }
+  return out
+}
+
+// 추천 묶음의 디렉터리 결과에 별 개수 등을 채운다
+const checkStars = async ($: any, gi: number) => {
+  const st = await read($, recoState)
+  const g = st.groups[gi]
+  if (!g) return
+  const repos = g.local.map(x => x.repo).filter(Boolean)
+  if (repos.length === 0) {
+    await setGroup($, gi, { starsStatus: 'done' })
+    return
+  }
+  await setGroup($, gi, { starsStatus: 'checking' })
+  try {
+    const info = await fetchRepoInfo($, repos)
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+    const local = g.local.map(x => {
+      const i = info.get(x.repo.toLowerCase())
+      if (!i) return x
+      return {
+        ...x, stars: num(i.stargazers_count), forks: num(i.forks_count), pushed: clean(i.pushed_at, 10),
+        lic: clean(i.license?.spdx_id, 30) || undefined, flags: githubFlags(i),
+      }
+    })
+    await setGroup($, gi, { local, starsStatus: 'done' })
+  } catch (err: any) {
+    await setGroup($, gi, { starsStatus: `error:${String(err?.message ?? err).slice(0, 100)}` })
+  }
+}
+
+// 별 개수를 먼저 확인한 다음 GitHub에서 더 찾는다 (검색 제한에 걸리면 거기서 멈춘다)
+const starsThenSearch = async ($: any, gi: number) => {
+  await checkStars($, gi)
+  const st = await read($, recoState)
+  if ((st.groups[gi]?.starsStatus ?? '').includes('rate limit')) return
+  await githubFind($, gi)
+}
+
+// 사용자 범위 플러그인만 켜고 끌 수 있다. 이 패널을 만드는 플러그인 자신은 끌 수 없게 막고, 키 모양이 이상한 것은 건드리지 않는다.
+const canToggleItem = (it: Item): boolean => {
+  if (it.kind !== 'plugin' || !it.key || it.where || it.name === 'ai-tool-tracker') return false
+  const [n, m, extra] = it.key.split('@')
+  return !!safeName(n) && !!safeName(m) && extra === undefined
+}
+
+// 여러 플러그인을 차례로 켜거나 끈다 (전체 또는 한 묶음). 하나가 실패해도 나머지는 계속하고, 끝에 실패한 것을 알려 준다.
+const doBulk = async ($: any, scope: string, enable: boolean, targets: Item[]) => {
+  const id = `bulk:${scope}:${enable ? 'on' : 'off'}`
+  const list = targets.filter(canToggleItem)
+  let done = 0
+  const failed: string[] = []
+  try {
+    for (let i = 0; i < list.length; i++) {
+      await setMove($, id, `run:${i + 1}/${list.length}`)
+      const r = await $.process.run(['claude', 'plugin', enable ? 'enable' : 'disable', list[i].key, '--scope', 'user'], {
+        timeoutMs: 60000,
+      })
+      if (r.exitCode === 0) done++
+      else failed.push(`${list[i].name}: ${String(r.stderr || r.stdout || 'failed').trim().slice(0, 60)}`)
+    }
+    await setMove($, id, failed.length > 0 ? `error:${failed.join(' | ').slice(0, 200)}` : `done:${done}`)
+    await rescan($)
+    await update($, uses, l => [...l])
+  } catch (err: any) {
+    await setMove($, id, `error:${String(err?.message ?? err).slice(0, 100)}`)
   }
 }
 
@@ -1372,6 +1564,8 @@ const fmt = (at: number) => {
 export const register: Register = (on, options) => {
   const picked = (options as any)?.language
   lang = typeof picked === 'string' && LANG_NAME[picked] ? picked : 'ko'
+  const ms = parseInt(String((options as any)?.minStars ?? '10'), 10)
+  minStars = [0, 10, 30, 100].includes(ms) ? ms : 10
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -1430,9 +1624,10 @@ export const register: Register = (on, options) => {
     // 직접 입력한 검색어이므로 GitHub도 같이 찾는다 (묶음마다, 제한에 걸리면 멈춘다)
     void (async () => {
       for (let gi = 0; gi < groups.length; gi++) {
-        await githubFind($, gi)
+        await starsThenSearch($, gi)
         const s = await read($, recoState)
-        if (s.groups[gi]?.ghStatus.includes('rate limit')) break
+        const g = s.groups[gi]
+        if (g?.ghStatus.includes('rate limit') || g?.starsStatus.includes('rate limit')) break
       }
     })()
     return { text: ui().findStarted(groups.map(g => g.terms[0]).join(', ')) }
@@ -1546,22 +1741,26 @@ export const register: Register = (on, options) => {
     // 추천 한 건 그리기 (디렉터리와 GitHub 결과가 같이 쓴다)
     const tierColor = (t: string) =>
       t === 'official' || t === 'anthropic' || t === 'partner' ? 'success' : t === 'github' ? 'error' : 'warning'
-    const recoRow = (r: RecoItem) => {
+    const recoRow = (r: RecoItem, rank?: number) => {
       const link = githubLink(r.repo) // 주소는 검증한 owner/repo로 직접 만든 것만 쓴다
       const facts = [
         `${ui().ownerLabel}: ${r.owner || '—'}`,
         r.stars !== undefined ? `★${r.stars}` : '',
+        r.forks !== undefined ? `⑂${r.forks}` : '',
         r.pushed || '',
         r.lic && r.lic !== 'NOASSERTION' ? r.lic : '',
       ].filter(Boolean).join(' · ')
       return (
         <Box flexDirection="column">
           <Box>
+            {rank ? <Text color="success" bold>{ui().recoPick(rank)} </Text> : null}
             <Text bold>{r.name}</Text>
             <Text color={tierColor(r.tier)}> [{ui()[`tier_${r.tier}`] ?? r.tier}]</Text>
             {r.installed && <Text dimColor> [{ui().recoInstalled}]</Text>}
           </Box>
           <Text dimColor>{facts}</Text>
+          {isLowStars(r, minStars) && <Text color="error">⚠ {ui().fewStars(r.stars ?? 0, minStars)}</Text>}
+          {r.stars === undefined && <Text dimColor>{ui().starsUnknown}</Text>}
           {(r.flags ?? []).map(fl => (
             <Text color="warning">⚠ {ui()[`flag_${fl}`] ?? fl}</Text>
           ))}
@@ -1586,11 +1785,159 @@ export const register: Register = (on, options) => {
       )
     }
 
+    // 추천 한 묶음: 별이 가장 많은 1~2개를 맨 위에 "추천"으로 보여주고, 나머지는 눌러야 보인다
+    const recoGroup = (g: RecoGroup, gi: number) => {
+      const merged = mergeRecos(g.local, g.github) as RecoItem[]
+      const rk = rankRecos(merged, minStars, 2)
+      const busy = g.starsStatus === 'checking' || g.ghStatus === 'searching'
+      const preview = rk.starsKnown ? [] : rk.rest.slice(0, 4) // 별을 모르면 출처·관련도 순으로 일부만
+      const t0 = g.terms[0] ?? ''
+      const canCheck = g.starsStatus !== 'done' && g.local.some(x => x.repo)
+      const canSearch = g.ghStatus === 'idle' || g.ghStatus.startsWith('error:')
+      return (
+        <Box flexDirection="column">
+          <Text> </Text>
+          <Text bold>
+            {g.cat
+              ? ui().recoTopic(ui()[`cat_${g.cat}`] ?? g.cat, g.terms.join(', '))
+              : ui().recoTopicFree(g.terms.join(', '))}
+          </Text>
+          {merged.length === 0 && <Text dimColor>{ui().recoLocalNone}</Text>}
+          {!rk.starsKnown && merged.length > 0 && <Text color="warning">{ui().recoStarsUnknown}</Text>}
+          {rk.starsKnown && rk.top.length === 0 && merged.length > 0 && (
+            <Text color="warning">{ui().recoNoTop(minStars)}</Text>
+          )}
+          {rk.top.length > 0 && <Text bold>{ui().recoTop(rk.top.length)}</Text>}
+          {rk.top.map((r, i) => recoRow(r, i + 1))}
+          {preview.map(r => recoRow(r))}
+          {rk.starsKnown && rk.rest.length > 0 && (
+            <Button
+              key={`rest-${gi}`}
+              label={g.showRest ? ui().recoRestHide : ui().recoRestShow(rk.rest.length)}
+              onPress={() => void setGroup($, gi, { showRest: !g.showRest })}
+            />
+          )}
+          {rk.starsKnown && g.showRest && rk.rest.map(r => recoRow(r))}
+          <Text dimColor>{ui().recoGithubTitle}</Text>
+          {!busy && (canCheck || canSearch) && (
+            <Box flexDirection="column">
+              <Box>
+                {canCheck && (
+                  <Button key={`stars-${gi}`} label={ui().recoStarsBtn} onPress={() => void checkStars($, gi)} />
+                )}
+                {canSearch && (
+                  <Button
+                    key={`gh-go-${gi}`}
+                    label={ui().recoGithubBtn(t0)}
+                    onPress={() => void starsThenSearch($, gi)}
+                  />
+                )}
+              </Box>
+              <Text dimColor>{ui().recoSending(t0)}</Text>
+            </Box>
+          )}
+          {g.starsStatus === 'checking' && <Text dimColor>{ui().recoStarsChecking}</Text>}
+          {g.ghStatus === 'searching' && <Text dimColor>{ui().recoSearching}</Text>}
+          {g.starsStatus.startsWith('error:') && <Text>⚠ {ui().recoGhErr(g.starsStatus.slice(6))}</Text>}
+          {g.ghStatus.startsWith('error:') && <Text>⚠ {ui().recoGhErr(g.ghStatus.slice(6))}</Text>}
+          {g.ghStatus === 'empty' && <Text dimColor>{ui().recoGhNone}</Text>}
+        </Box>
+      )
+    }
+
+    // 켜기/끄기 버튼 (전체 또는 한 묶음). 진행 중이거나 확인 중이면 버튼을 숨긴다.
+    const bulkBusy = (scope: string) => {
+      const a = moveState[`bulk:${scope}:off`] ?? ''
+      const b = moveState[`bulk:${scope}:on`] ?? ''
+      return (a !== '' && a !== 'idle') || (b !== '' && b !== 'idle')
+    }
+    const bulkButtons = (scope: string, list: Item[]) => {
+      if (bulkBusy(scope)) return null
+      const isAll = scope === 'all'
+      const offT = list.filter(it => canToggleItem(it) && it.enabled)
+      const onT = list.filter(it => canToggleItem(it) && !it.enabled)
+      return (
+        <Box>
+          {onT.length > 0 && (
+            <Button
+              key={`bulk-on-${scope}`}
+              label={isAll ? ui().allOn : ui().groupOn}
+              onPress={() => setMove($, `bulk:${scope}:on`, 'confirm')}
+            />
+          )}
+          {offT.length > 0 && (
+            <Button
+              key={`bulk-off-${scope}`}
+              label={isAll ? ui().allOff : ui().groupOff}
+              onPress={() => setMove($, `bulk:${scope}:off`, 'confirm')}
+            />
+          )}
+        </Box>
+      )
+    }
+    // 확인·진행·결과 줄
+    const bulkStatus = (scope: string, list: Item[]) => {
+      const out: any[] = []
+      for (const dir of ['off', 'on'] as const) {
+        const id = `bulk:${scope}:${dir}`
+        const st = moveState[id] ?? ''
+        if (st === '' || st === 'idle') continue
+        const enable = dir === 'on'
+        const targets = list.filter(it => canToggleItem(it) && it.enabled !== enable)
+        if (st === 'confirm') {
+          out.push(
+            <Box flexDirection="column">
+              <Text>{enable ? ui().bulkAskOn(targets.length) : ui().bulkAskOff(targets.length)}</Text>
+              <Box>
+                <Button key={`${id}-yes`} label={ui().yes} onPress={() => void doBulk($, scope, enable, targets)} />
+                <Button key={`${id}-no`} label={ui().cancel} onPress={() => setMove($, id, 'idle')} />
+              </Box>
+            </Box>,
+          )
+        } else if (st.startsWith('run:')) {
+          const [i, n] = st.slice(4).split('/')
+          out.push(<Text dimColor>{ui().bulkRun(Number(i), Number(n))}</Text>)
+        } else if (st.startsWith('done:')) {
+          out.push(
+            <Box flexDirection="column">
+              <Text dimColor>{ui().bulkDone(Number(st.slice(5)))}</Text>
+              <Button key={`${id}-ok`} label={ui().cacheOk} onPress={() => setMove($, id, 'idle')} />
+            </Box>,
+          )
+        } else if (st.startsWith('error:')) {
+          out.push(
+            <Box flexDirection="column">
+              <Text>⚠ {st.slice(6)}</Text>
+              <Button key={`${id}-retry`} label={ui().retry} onPress={() => setMove($, id, 'idle')} />
+            </Box>,
+          )
+        }
+      }
+      return out.length > 0 ? <Box flexDirection="column">{out}</Box> : null
+    }
+    // 묶음 머리글: 누르면 접고 펼치고, 플러그인이면 그 묶음만 켜고 끌 수 있다
+    const headerRow = (cat: CatKey, items: Item[]) => {
+      const collapsed = !!openState[`cat:${cat}`]
+      return (
+        <Box flexDirection="column">
+          <Box>
+            <Button
+              key={`cat-${cat}`}
+              label={`${collapsed ? '▸' : '▾'} ${ui()[`catg_${cat}`] ?? cat} (${items.length})`}
+              onPress={() => update($, open, m => ({ ...m, [`cat:${cat}`]: !m[`cat:${cat}`] }))}
+            />
+            {sub !== 'skills' && bulkButtons(`cat:${cat}`, items)}
+          </Box>
+          {sub !== 'skills' && bulkStatus(`cat:${cat}`, items)}
+        </Box>
+      )
+    }
+
     // 플러그인/스킬 구역에서 같이 쓰는 한 항목 그리기
     const renderRow = (it: Item) => {
           const isOpen = !!openState[it.name]
           // 사용자 범위 플러그인만 켜고 끌 수 있다. 이 패널을 만드는 모드 자신은 끌 수 없게 막는다.
-          const canToggle = it.kind === 'plugin' && !!it.key && !it.where && it.name !== 'ai-tool-tracker'
+          const canToggle = canToggleItem(it)
           const toggleState = moveState[`toggle:${it.key}`] ?? ''
           const mark = usedNames.has(it.name) ? '●' : '○'
           const kindText = it.kind === 'plugin' ? ui().plugin : ui().skill
@@ -1652,19 +1999,32 @@ export const register: Register = (on, options) => {
     const plugCount = installed.filter(i => i.kind === 'plugin').length
     const skillCount = installed.filter(i => i.kind === 'skill').length
 
-    // 화면 높이 안에서 보여줄 항목 (펼친 항목은 스킬 줄만큼 더 차지)
-    // 지금 보고 있는 구역의 항목만 화면 높이에 맞춰 자른다
+    // 지금 보고 있는 구역의 항목을 용도별로 묶는다. 접은 묶음은 항목을 숨기고, 나머지는 화면 높이 안에서 자른다.
     const visible = installed.filter(i => i.kind === (sub === 'skills' ? 'skill' : 'plugin'))
-    let usedLines = 0
-    const shown: Item[] = []
-    const showAll = !!openState['__all'] // "모두 보기"를 누르면 화면 높이와 상관없이 전부
-    for (const it of visible) {
-      const need =
-        2 + (openState[it.name] ? Math.max(1, it.children.length + it.agents.length + it.mcp.length) : 0)
-      if (!showAll && shown.length > 0 && usedLines + need > budget) break
-      usedLines += need
-      shown.push(it)
+    type Entry = { type: 'header'; cat: CatKey; items: Item[] } | { type: 'item'; it: Item }
+    const grouped = new Map<CatKey, Item[]>()
+    for (const it of visible) grouped.set(it.cat, [...(grouped.get(it.cat) ?? []), it])
+    const entries: Entry[] = []
+    for (const cat of CATEGORY_ORDER) {
+      const list = grouped.get(cat)
+      if (!list) continue
+      entries.push({ type: 'header', cat, items: list })
+      if (!openState[`cat:${cat}`]) for (const it of list) entries.push({ type: 'item', it })
     }
+    let usedLines = 0
+    const shownEntries: Entry[] = []
+    const showAll = !!openState['__all'] // "더 보기"를 누르면 화면 높이와 상관없이 전부
+    for (const en of entries) {
+      const need =
+        en.type === 'header'
+          ? 1
+          : 2 + (openState[en.it.name] ? Math.max(1, en.it.children.length + en.it.agents.length + en.it.mcp.length) : 0)
+      if (!showAll && shownEntries.length > 0 && usedLines + need > budget) break
+      usedLines += need
+      shownEntries.push(en)
+    }
+    const hiddenCount =
+      entries.filter(e => e.type === 'item').length - shownEntries.filter(e => e.type === 'item').length
 
     return (
       <Box flexDirection="column">
@@ -1731,25 +2091,20 @@ export const register: Register = (on, options) => {
         <Text> </Text>
         {idx.items.length === 0 && <Text dimColor>{ui().noInst}</Text>}
         {idx.items.length > 0 && visible.length === 0 && <Text dimColor>{ui().noneHere}</Text>}
-        {sub !== 'skills' && plugCount > 0 && (
+        {visible.length > 0 && (
           <Box flexDirection="column">
-            <Text bold>{ui().secPlugins(plugCount)}</Text>
-            <Text dimColor>{ui().hintPlugins}</Text>
-            {shown.filter(i => i.kind === 'plugin').map(renderRow)}
+            <Text bold>{sub === 'skills' ? ui().secSkills(skillCount) : ui().secPlugins(plugCount)}</Text>
+            <Text dimColor>{sub === 'skills' ? ui().hintSkills : ui().hintPlugins}</Text>
+            {sub !== 'skills' && bulkButtons('all', visible)}
+            {sub !== 'skills' && bulkStatus('all', visible)}
+            <Text> </Text>
+            {shownEntries.map(en => (en.type === 'header' ? headerRow(en.cat, en.items) : renderRow(en.it)))}
           </Box>
         )}
-        <Text> </Text>
-        {sub === 'skills' && skillCount > 0 && (
-          <Box flexDirection="column">
-            <Text bold>{ui().secSkills(skillCount)}</Text>
-            <Text dimColor>{ui().hintSkills}</Text>
-            {shown.filter(i => i.kind === 'skill').map(renderRow)}
-          </Box>
-        )}
-        {visible.length > shown.length && (
+        {hiddenCount > 0 && (
           <Button
             key="show-all"
-            label={ui().showMore(visible.length - shown.length)}
+            label={ui().showMore(hiddenCount)}
             onPress={() => update($, open, m => ({ ...m, __all: true }))}
           />
         )}
@@ -1768,43 +2123,7 @@ export const register: Register = (on, options) => {
             <Text bold>{ui().recoTitle}</Text>
             <Text dimColor>{ui().trustNote}</Text>
             {reco.groups.length === 0 && <Text dimColor>{ui().recoNone}</Text>}
-            {reco.groups.map((g, gi) => (
-              <Box flexDirection="column">
-                <Text> </Text>
-                <Text bold>
-                  {g.cat
-                    ? ui().recoTopic(ui()[`cat_${g.cat}`] ?? g.cat, g.terms.join(', '))
-                    : ui().recoTopicFree(g.terms.join(', '))}
-                </Text>
-                <Text dimColor>{ui().recoLocalTitle}</Text>
-                {g.local.length === 0 && <Text dimColor>{ui().recoLocalNone}</Text>}
-                {g.local.map(recoRow)}
-                <Text dimColor>{ui().recoGithubTitle}</Text>
-                {g.ghStatus === 'idle' && (
-                  <Box flexDirection="column">
-                    <Button
-                      key={`gh-go-${gi}`}
-                      label={ui().recoGithubBtn(g.terms[0] ?? '')}
-                      onPress={() => void githubFind($, gi)}
-                    />
-                    <Text dimColor>{ui().recoSending(g.terms[0] ?? '')}</Text>
-                  </Box>
-                )}
-                {g.ghStatus === 'searching' && <Text dimColor>{ui().recoSearching}</Text>}
-                {g.ghStatus === 'empty' && <Text dimColor>{ui().recoGhNone}</Text>}
-                {g.ghStatus.startsWith('error:') && (
-                  <Box flexDirection="column">
-                    <Text>⚠ {ui().recoGhErr(g.ghStatus.slice(6))}</Text>
-                    <Button
-                      key={`gh-retry-${gi}`}
-                      label={ui().retry}
-                      onPress={() => void githubFind($, gi)}
-                    />
-                  </Box>
-                )}
-                {g.github.map(recoRow)}
-              </Box>
-            ))}
+            {reco.groups.map(recoGroup)}
           </Box>
         )}
         {tab === 'env' && (
@@ -1820,6 +2139,19 @@ export const register: Register = (on, options) => {
             />
           ))}
         </Box>
+        <Text> </Text>
+        <Box>
+          <Text dimColor>{ui().minStarsLabel}: </Text>
+          {[0, 10, 30, 100].map(n => (
+            <Button
+              key={`ms-${n}`}
+              label={n === minStars ? `● ${n}` : String(n)}
+              variant={n === minStars ? 'primary' : undefined}
+              onPress={() => void $.config.set({ key: 'ai-tool-tracker.minStars', value: String(n) })}
+            />
+          ))}
+        </Box>
+        <Text dimColor>{ui().minStarsHint}</Text>
         <Text> </Text>
         <Text bold>{ui().env}</Text>
         <Text dimColor>

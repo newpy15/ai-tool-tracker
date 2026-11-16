@@ -25,6 +25,10 @@ export type RecoItem = {
   /** 이미 이 PC에 설치된 것 */
   installed: boolean
   stars?: number
+  /** 갈라 쓴(fork) 수 */
+  forks?: number
+  /** 검색어와 얼마나 맞는지 (이름에 든 단어 3점, 설명에 든 단어 1점). GitHub에서 온 것은 0 */
+  rel: number
   pushed?: string
   lic?: string
   /** 설치(또는 마켓플레이스 추가) 명령. 이름이 안전하지 않으면 빈 문자열 */
@@ -41,6 +45,10 @@ export type RecoGroup = {
   github: RecoItem[]
   /** idle | searching | done | empty | error:<이유> */
   ghStatus: string
+  /** 별 개수 확인 상태: idle | checking | done | error:<이유> */
+  starsStatus: string
+  /** 추천 1·2위 말고 나머지도 펼쳐 보는지 */
+  showRest: boolean
 }
 
 export type RecoState = {
