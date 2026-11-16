@@ -158,7 +158,7 @@ test('기본값은 빠듯하다: 한 번 실행(약 6만)의 서너 배를 넘�
 test('사용량 보호 설정: 5시간과 주간을 따로, 정해진 값만, 둘 다 끌 수는 없다', () => {
   const s = m.parseSettings({ guard5: 60, guard7: 0 })
   assert.deepEqual([s.guard5, s.guard7], [60, 0])
-  for (const bad of [100, '80', null, 75]) {
+  for (const bad of [105, '80', null, 75, 5, -10]) {
     assert.deepEqual([m.parseSettings({ guard5: bad }).guard5, m.parseSettings({ guard7: bad }).guard7], [80, 80])
   }
   const both = m.parseSettings({ guard5: 0, guard7: 0 })
@@ -172,8 +172,14 @@ test('예전 설정(guard 하나)은 두 기준에 같은 값으로 옮긴다', 
 })
 
 test('nextGuard: 한쪽이 꺼져 있으면 다른 쪽은 끌 수 없다', () => {
-  assert.equal(m.nextGuard(90, 80), 0)
-  assert.equal(m.nextGuard(90, 0), 50)
-  assert.equal(m.nextGuard(0, 80), 50)
+  assert.equal(m.nextGuard(100, 80), 0)
+  assert.equal(m.nextGuard(100, 0), 10)
+  assert.equal(m.nextGuard(0, 80), 10)
   assert.equal(m.nextGuard(80, 80), 90)
+  assert.equal(m.nextGuard(90, 80), 100)
+})
+
+test('GUARDS: 0(쓰지 않음)과 10~100을 10단위로', () => {
+  assert.deepEqual(m.GUARDS, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+  assert.equal(m.parseSettings({ guard5: 100, guard7: 10 }).guard5, 100)
 })

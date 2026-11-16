@@ -87,9 +87,10 @@ export type AgentUse = Record<string, { runs: number; tokens: number }>
 export const DEFAULT_CFG: AgentCfg = { model: 'inherit', budget: 100_000, maxTurns: 10 } // limitsOf('inherit')의 기본값과 같다(시험이 확인)
 /**
  * 사용량 보호: 5시간 기준과 주간(7일) 기준을 따로 고른다. 사용량이 그 퍼센트 이상이면 새 하위 에이전트를 시작하지 않는다.
- * 0은 그 기준을 쓰지 않는다는 뜻이다. 둘 다 끌 수는 없다(하나는 반드시 켜져 있다).
+ * 10% 단위로 10~100을 고르고, 저장값 0은 "그 기준을 쓰지 않음"이다(0%로 막으면 항상 막히므로 그 칸을 '쓰지 않음'으로 쓴다).
+ * 둘 다 끌 수는 없다(하나는 반드시 켜져 있다). 100%는 한도가 다 찼을 때만 막는다.
  */
-export const GUARDS = [0, 50, 60, 70, 80, 90]
+export const GUARDS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 export const DEFAULT_GUARD = 80
 
 /** 다음 값으로 돌린다. 다른 기준이 꺼져 있으면 0(끔)은 건너뛴다: 둘 다 꺼지지 않게 */
