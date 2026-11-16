@@ -39,7 +39,7 @@ So I built a panel that "shows the tools you used, helps you find the ones you n
 - **Tokens**: no model is used to scan files. A model is used only for translation (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (42 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (49 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -96,6 +96,7 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 | Understand what a plugin does | the **Tools** tab, click its name to expand it |
 | Switch off plugins you don't use, to cut tokens | the **Tools** tab → the `Turn off` button on the plugin's row (see "Cautions" below) |
 | Hand each group's work to its own sub-agent with its own model and token budget | the **Environment** tab → "Division of work" → `Turn on`, then, per group, pick a model (Haiku, Sonnet, Opus 5.5, Fable 5.2 ... or type any model ID) and type a token budget such as `150k` |
+| Check how much of my usage limit is left before a big job | the line under the tabs: **Usage** (5-hour and 7-day bars with the time to reset); a note appears when you pass 80% |
 | Switch off or on many plugins at once | the **Tools** tab → `Turn all off` / `Turn all on`, or `Turn this group off` on a group such as Video (it asks first) |
 | Find tools for what you want to build | say it, or `/ai-find what you want` → the **Suggestions** tab |
 | Change the screen language | the language buttons at the top of the **Environment** tab |
@@ -129,9 +130,10 @@ ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches**
 | Hooks module | `hooks/register.tsx` | Registers the hooks below, reads your installed tools, draws the panel and runs the buttons. |
 | Trust rules | `hooks/trust.ts` | Pure functions that clean text written by other people, make safe names, commands and links, decide the source tier, raise caution flags, and rank suggestions by relevance and stars. No Claude Code needed to test them. |
 | Division of work | `hooks/agents.ts` | Pure functions for the per-group sub-agents: settings checks, safe agent definitions (only verified plugin names, never text written by others), token counting and the budget rule. |
+| Usage | `hooks/usage.ts` | Pure functions for the usage bars: percentage clean-up, level (ok / over half / near the limit), the text bar, time to reset. |
 | Categories | `hooks/categories.ts` | Pure functions that group plugins and skills by purpose (video, captions & voice, planning & docs, ...) from the words in their names and descriptions. |
 | State types | `types/index.d.ts` | The shape of what the panel keeps (log, tabs, suggestions). |
-| Tests | `test/trust.test.mjs`, `test/categories.test.mjs`, `test/agents.test.mjs` | The safety, ranking, category and sub-agent rules, run with `node --test test/`. |
+| Tests | `test/trust.test.mjs`, `test/categories.test.mjs`, `test/agents.test.mjs`, `test/usage.test.mjs` | The safety, ranking, category, sub-agent and usage rules, run with `node --test test/`. |
 | Install files | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | What `claude plugin install … --marketplace newpy15/ai-tool-tracker` reads. |
 
 ### What each hook does
@@ -239,6 +241,7 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 - **"Move to global" is a copy.** The original stays, and deleting the original is a separate confirmation. If you edit the original after copying, the copy is not updated automatically.
 - **Suggestions do not guarantee safety.** Before installing, check that the owner is right, and read the repository code and the permissions it asks for.
 - **Be careful with `Turn off`.** If you switch off a plugin you are using, that feature is gone from the next start. Press `Turn on` to bring it back.
+- **The Usage bars are what Claude Code reports, as percentages.** The exact token count of your 5-hour limit is not published, so this plugin shows no token number for it. Past 60% it suggests handing light work to Haiku, and past 80% and 95% it warns once. It only reads the figures; it costs nothing and sends nothing.
 - **Division of work is off by default.** Turning it on adds one line per group to the agent list the model reads every turn (a small token cost). Each model has its own default, minimum and maximum for the budget and max turns (the budget is at least 100k, because a sub-agent uses about 60k tokens just to start; pricier models have a lower maximum; "no limit" is not allowed), so one run cannot use up the whole budget. The token budget is checked when a new sub-agent starts; one that is already running is not cut off, its length is limited by "Max turns". Usage is counted for this session only, and only from the sub-agents this plugin defines.
 - **`Turn all off` and `Turn this group off` ask for confirmation first**, never switch off this plugin itself, and take effect the next time Claude Code starts. Turning plugins back on works the same way.
 - **Stars measure popularity, not quality.** Star counts can be inflated, and a popular tool can still be the wrong one for you. Read the description and check the owner. A repository with few stars is not necessarily bad, it just has little evidence behind it.

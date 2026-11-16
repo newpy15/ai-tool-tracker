@@ -14,6 +14,8 @@ import {
   modelLabel, changeModel, fit, limitsOf, parseModel, parseSettings, parseTokens, parseTurns, PLUGIN_ID, tokensOf,
 } from './agents'
 import type { AgentSettings, AgentUse } from './agents'
+import { bar, levelColor, levelOf, pct, pickWindow, shouldWarn, untilReset } from './usage'
+import type { Level } from './usage'
 
 const PANE = 'ai-tools'
 
@@ -225,6 +227,18 @@ const UI = {
     minStarsHint: '검토되지 않은 저장소는 별이 이 개수보다 적으면 추천하지 않습니다. 0이면 거르지 않습니다.',
     agTitle: '분업 (용도별 하위 에이전트)',
     agHint: '켜면 영상·개발 같은 묶음마다 전용 하위 에이전트가 생기고, 그 일은 정해 둔 모델과 토큰 한도 안에서 맡습니다. 에이전트 목록이 매 턴 조금 늘어나므로 기본은 꺼져 있습니다. 바꾸면 다음 턴부터 적용됩니다. 값은 입력칸에 쓰고 Enter를 누르세요.',
+    usTitle: '사용량',
+    usFive: '5시간',
+    usSeven: '7일',
+    usCtx: '대화 길이',
+    usCost: '이번 세션',
+    usReset: (h: number, m: number) => (h > 0 ? `${h}시간 ${m}분 뒤 초기화` : `${m}분 뒤 초기화`),
+    usNone: '아직 사용량 정보가 없습니다. 첫 응답이 끝나면 나옵니다.',
+    usNote: 'Claude Code가 알려 주는 퍼센트입니다. 정확한 토큰 수는 공개되지 않습니다.',
+    usAdvMid: '절반 넘게 썼습니다. 가벼운 일은 분업에서 Haiku에 맡기면 아낄 수 있습니다.',
+    usAdvHigh: '곧 한도입니다. 큰 작업은 초기화 뒤로 미루거나, Haiku와 낮은 토큰 한도로 돌리세요.',
+    usAdvFull: '거의 다 썼습니다. 초기화될 때까지 기다리거나 아주 가벼운 일만 하세요.',
+    usToast: (p: number) => `5시간 사용량이 ${Math.round(p)}%입니다. 큰 작업 전에 패널의 사용량을 확인하세요.`,
     agModel: '모델',
     agModelCustom: '모델 ID 직접 입력:',
     agRange: (min: string, max: string) => `${min} ~ ${max} (예: 150k)`,
@@ -405,6 +419,18 @@ const UI = {
     minStarsHint: 'Unreviewed repositories with fewer stars than this are not recommended. 0 turns the check off.',
     agTitle: 'Division of work (sub-agents by purpose)',
     agHint: 'When on, each group such as Video or Dev gets its own sub-agent that does that work on the model and token budget you set. It adds a little to the agent list every turn, so it is off by default. Changes apply from the next turn. Type a value in a field and press Enter.',
+    usTitle: 'Usage',
+    usFive: '5 hours',
+    usSeven: '7 days',
+    usCtx: 'Conversation',
+    usCost: 'This session',
+    usReset: (h: number, m: number) => (h > 0 ? `resets in ${h}h ${m}m` : `resets in ${m}m`),
+    usNone: 'No usage information yet. It appears after the first response.',
+    usNote: 'Percentages reported by Claude Code. The exact token count is not published.',
+    usAdvMid: 'You have used over half. Hand light tasks to Haiku in Division of work to save some.',
+    usAdvHigh: 'Close to the limit. Put big jobs off until the reset, or run them on Haiku with a low token budget.',
+    usAdvFull: 'Almost used up. Wait for the reset or do only very light work.',
+    usToast: (p: number) => `5-hour usage is ${Math.round(p)}%. Check Usage in the panel before big jobs.`,
     agModel: 'Model',
     agModelCustom: 'Custom model ID:',
     agRange: (min: string, max: string) => `${min} to ${max} (e.g. 150k)`,
@@ -1784,9 +1810,20 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   // 하위 에이전트가 한 턴을 마칠 때마다 쓴 토큰을 그 묶음에 더한다
+  // 또 메인 대화의 턴이 끝날 때, 5시간 사용량이 80%, 95%를 넘어서는 순간 한 번만 알린다
+  let lastLevel: Level | undefined
   on('turn.complete', async ($, e, next) => {
     const cat = e.agentId ? agentOf.get(e.agentId) : undefined
     if (cat !== undefined && e.usage) await update($, agentUseState, u => addUsage(u, cat, tokensOf(e.usage!)))
+    if (e.agentId === undefined) {
+      const u: any = await safe($.session.usage())
+      const w = pickWindow(u?.rateLimits, 'five_hour')
+      if (w) {
+        const lv = levelOf(w.percent)
+        if (shouldWarn(lastLevel, lv)) $.ui.toast(ui().usToast(w.percent))
+        lastLevel = lv
+      }
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -1802,6 +1839,24 @@ export const register: Register = (on, options) => {
     const tab = await read($, tabState)
     const sub = await read($, subState)
     const agCfg = parseSettings(await read($, agentCfgState))
+    // 사용량: Claude Code가 알려 주는 값. 읽기만 하고 비용은 들지 않는다
+    const usage: any = await safe($.session.usage())
+    const five = pickWindow(usage?.rateLimits, 'five_hour')
+    const seven = pickWindow(usage?.rateLimits, 'seven_day')
+    const ctxPct = pct(usage?.context?.percent)
+    const costUsd = typeof usage?.cost?.usd === 'number' ? usage.cost.usd : undefined
+    const usageLine = (label: string, w: { percent: number; resetsAt?: string }) => {
+      const lv = levelOf(w.percent)
+      const left = untilReset(w.resetsAt, Date.now())
+      return (
+        <Box gap={1}>
+          <Text dimColor>{label}</Text>
+          <Text color={levelColor(lv)}>{bar(w.percent)}</Text>
+          <Text bold>{Math.round(w.percent)}%</Text>
+          {left && <Text dimColor>{ui().usReset(left.h, left.m)}</Text>}
+        </Box>
+      )
+    }
     const agUse = (await read($, agentUseState)) ?? {}
     const modelText = (m: string) => (m === 'inherit' ? ui().agInherit : modelLabel(m))
     const budgetText = (n: number) => (n === 0 ? ui().agNoLimit : fmtTokens(n))
@@ -2169,6 +2224,25 @@ export const register: Register = (on, options) => {
               onPress={() => update($, tabState, () => id)}
             />
           ))}
+        </Box>
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold>{ui().usTitle}</Text>
+          {!five && !seven && <Text dimColor>{ui().usNone}</Text>}
+          {five && usageLine(ui().usFive, five)}
+          {seven && usageLine(ui().usSeven, seven)}
+          {(ctxPct !== undefined || costUsd !== undefined) && (
+            <Text dimColor>
+              {ctxPct !== undefined ? `${ui().usCtx} ${Math.round(ctxPct)}%` : ''}
+              {ctxPct !== undefined && costUsd !== undefined ? ' · ' : ''}
+              {costUsd !== undefined ? `${ui().usCost} $${costUsd.toFixed(2)}` : ''}
+            </Text>
+          )}
+          {five && levelOf(five.percent) !== 'ok' && (
+            <Text color={levelColor(levelOf(five.percent))}>
+              {levelOf(five.percent) === 'mid' ? ui().usAdvMid : levelOf(five.percent) === 'high' ? ui().usAdvHigh : ui().usAdvFull}
+            </Text>
+          )}
+          <Text dimColor>{ui().usNote}</Text>
         </Box>
         <Text> </Text>
         {tab === 'log' && (
