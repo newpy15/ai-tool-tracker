@@ -29,17 +29,18 @@ export type Range = { min: number; def: number; max: number }
 export type Limits = { budget: Range; turns: Range }
 /**
  * 모델마다 정한 기본값·최소·최대. 하위 에이전트는 시작만 해도 약 6만 토큰(기본 지침과 도구 목록)이 들기 때문에
- * 최소 한도는 10만 토큰으로 두어 한 번 실행에 한도가 바닥나지 않게 한다. 비싼 모델일수록 최대를 낮게 잡는다.
+ * 최소 한도는 10만 토큰으로 두어 한 번 실행에 한도가 바닥나지 않게 한다.
+ * 기본값은 초보자가 기준을 모르는 점을 감안해 일부러 빠듯하게(2~3번 실행 분량) 잡았고, 필요하면 올린다. 비싼 모델일수록 최대를 낮게 잡는다.
  * 0(제한 없음)은 받지 않는다.
  */
 export const limitsOf = (model: string): Limits => {
   const m = model.toLowerCase()
-  if (m.includes('haiku')) return { budget: { min: 100_000, def: 300_000, max: 3_000_000 }, turns: { min: 3, def: 25, max: 100 } }
-  if (m.includes('sonnet')) return { budget: { min: 100_000, def: 200_000, max: 2_000_000 }, turns: { min: 3, def: 20, max: 60 } }
+  if (m.includes('haiku')) return { budget: { min: 100_000, def: 200_000, max: 3_000_000 }, turns: { min: 3, def: 15, max: 100 } }
+  if (m.includes('sonnet')) return { budget: { min: 100_000, def: 150_000, max: 2_000_000 }, turns: { min: 3, def: 12, max: 60 } }
   if (m.includes('opus') || m.includes('fable'))
-    return { budget: { min: 100_000, def: 150_000, max: 1_000_000 }, turns: { min: 3, def: 15, max: 40 } }
+    return { budget: { min: 100_000, def: 100_000, max: 1_000_000 }, turns: { min: 3, def: 10, max: 40 } }
   // 현재 모델 그대로(inherit)이거나 모르는 모델: 가장 조심스러운 범위
-  return { budget: { min: 100_000, def: 200_000, max: 1_000_000 }, turns: { min: 3, def: 20, max: 40 } }
+  return { budget: { min: 100_000, def: 100_000, max: 1_000_000 }, turns: { min: 3, def: 10, max: 40 } }
 }
 
 /** 범위 안으로 맞춘다. 맞추느라 바뀌었으면 adjusted */
@@ -83,7 +84,7 @@ export type AgentCfg = { model: AgentModel; budget: number; maxTurns: number }
 export type AgentSettings = { on: boolean; cats: Partial<Record<CatKey, AgentCfg>> }
 export type AgentUse = Record<string, { runs: number; tokens: number }>
 
-export const DEFAULT_CFG: AgentCfg = { model: 'inherit', budget: 200_000, maxTurns: 20 } // limitsOf('inherit')의 기본값과 같다(시험이 확인)
+export const DEFAULT_CFG: AgentCfg = { model: 'inherit', budget: 100_000, maxTurns: 10 } // limitsOf('inherit')의 기본값과 같다(시험이 확인)
 export const DEFAULT_SETTINGS: AgentSettings = { on: false, cats: {} }
 export const PLUGIN_ID = 'ai-tool-tracker'
 

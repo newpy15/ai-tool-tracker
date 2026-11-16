@@ -63,7 +63,7 @@ test('buildSpec: 안전하지 않은 이름과 남이 쓴 글은 지침에 넣�
   assert.ok(!spec.prompt.includes('rm -rf'))
   assert.ok(!spec.prompt.includes('ignore previous'))
   assert.equal((spec.prompt.match(/remotion/g) ?? []).length, 1)
-  assert.equal(spec.maxTurns, 20)
+  assert.equal(spec.maxTurns, m.DEFAULT_CFG.maxTurns)
 })
 
 test('buildSpec: 이름이 많아도 12개까지, 묶음 이름의 이상한 글자는 지운다', () => {
@@ -130,18 +130,26 @@ test('fit: 범위 밖은 끌어들이고 바뀌었다고 알린다', () => {
 
 test('changeModel: 기본값 그대로면 새 기본값으로, 직접 정한 값은 범위 안이면 유지', () => {
   const a = m.changeModel(m.DEFAULT_CFG, 'claude-opus-5-5')
-  assert.deepEqual(a, { model: 'claude-opus-5-5', budget: 150_000, maxTurns: 15 })
+  assert.deepEqual(a, { model: 'claude-opus-5-5', budget: 100_000, maxTurns: 10 })
   const mine = { model: 'haiku', budget: 700_000, maxTurns: 50 }
   const b = m.changeModel(mine, 'sonnet')
   assert.equal(b.budget, 700_000)
   assert.equal(b.maxTurns, 50) // 소넷은 최대 60턴이라 직접 정한 50은 유지
   const c = m.changeModel(mine, 'claude-opus-5-5') // 700k는 오퍼스 범위(최대 1M) 안, 50턴은 최대 40 밖
   assert.equal(c.budget, 700_000)
-  assert.equal(c.maxTurns, 15)
+  assert.equal(c.maxTurns, 10)
 })
 
 test('parseSettings: 모델마다 범위를 적용한다 (0과 너무 작은 값은 기본값)', () => {
   const s = m.parseSettings({ on: true, cats: { dev: { model: 'haiku', budget: 0, maxTurns: 1 }, video: { model: 'opus', budget: 400_000, maxTurns: 30 } } })
-  assert.deepEqual(s.cats.dev, { model: 'haiku', budget: 300_000, maxTurns: 25 })
+  assert.deepEqual(s.cats.dev, { model: 'haiku', budget: 200_000, maxTurns: 15 })
   assert.deepEqual(s.cats.video, { model: 'opus', budget: 400_000, maxTurns: 30 })
+})
+
+test('기본값은 빠듯하다: 한 번 실행(약 6만)의 서너 배를 넘지 않는다', () => {
+  for (const mo of ['inherit', 'haiku', 'sonnet', 'opus', 'claude-fable-5-2']) {
+    const l = m.limitsOf(mo)
+    assert.ok(l.budget.def <= 200_000, mo)
+    assert.ok(l.turns.def <= 15, mo)
+  }
 })
