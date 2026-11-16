@@ -16,6 +16,8 @@ import {
 import type { AgentSettings, AgentUse } from './agents'
 import { attribute, bar, levelColor, levelOf, overGuard, pct, pickWindow, shouldWarn, untilReset } from './usage'
 import type { Level } from './usage'
+import { DAY_OPTIONS, DEFAULT_DAYS, emptyHistory, merge, parseHistory, record, unusedList } from './history'
+import type { History } from './history'
 
 const PANE = 'ai-tools'
 
@@ -233,6 +235,14 @@ const UI = {
     agGuard: '사용량 보호',
     agGuardOff: '쓰지 않음',
     agGuardHint: '5시간과 주간(7일) 기준을 따로 고릅니다. 그 사용량이 정한 퍼센트 이상이면 새 하위 에이전트를 시작하지 않습니다. 둘 다 끌 수는 없습니다.',
+    unTitle: '안 쓴 플러그인',
+    unDays: (n: number) => `${n}일 기준`,
+    unLearning: (d: number, n: number) => `사용 기록을 모으는 중입니다(${d}일째). ${n}일이 지나면 안 쓴 플러그인을 알려 드립니다.`,
+    unNone: (n: number) => `최근 ${n}일 안에 켜 둔 플러그인을 모두 썼습니다.`,
+    unNever: '기록된 사용 없음',
+    unAgo: (d: number) => `마지막 사용 ${d}일 전`,
+    unOffAll: (n: number, t: string) => (t ? `안 쓴 ${n}개 모두 끄기 (약 ${t} 토큰 절약)` : `안 쓴 ${n}개 모두 끄기`),
+    unNote: '플러그인 이름과 마지막 사용 시각, 횟수만 이 PC에 저장합니다. 새로 설치한 것은 아직 안 쓴 것일 수 있고, 도구를 부르지 않고 돕는 플러그인(테마 등)은 안 쓴 것처럼 보일 수 있으니 확인하고 끄세요.',
     tokAlways: (t: string) => `상시 약 ${t} 토큰`,
     tokOffNote: '꺼져 있어 토큰을 쓰지 않음',
     tokTotal: (t: string, n: number) => `켜 둔 플러그인 ${n}개가 대화마다 미리 차지하는 양: 약 ${t} 토큰`,
@@ -435,6 +445,14 @@ const UI = {
     agGuard: 'Usage protection',
     agGuardOff: 'not used',
     agGuardHint: 'Choose the 5-hour and the weekly (7-day) thresholds separately. No new sub-agent is started when that usage is at or above its percentage. You cannot turn both off.',
+    unTitle: 'Unused plugins',
+    unDays: (n: number) => `${n}-day rule`,
+    unLearning: (d: number, n: number) => `Collecting usage history (day ${d}). After ${n} days it will tell you which plugins went unused.`,
+    unNone: (n: number) => `Every enabled plugin was used in the last ${n} days.`,
+    unNever: 'no recorded use',
+    unAgo: (d: number) => `last used ${d} days ago`,
+    unOffAll: (n: number, t: string) => (t ? `Turn off all ${n} unused (saves about ${t} tokens)` : `Turn off all ${n} unused`),
+    unNote: 'Only the plugin name, the time of its last use and a count are stored on this PC. A newly installed plugin may simply not have been used yet, and plugins that help without being called (themes, for example) can look unused, so check before turning one off.',
     tokAlways: (t: string) => `always ~${t} tokens`,
     tokOffNote: 'off, so it uses no tokens',
     tokTotal: (t: string, n: number) => `Loaded up front in every conversation by ${n} enabled plugins: about ${t} tokens`,
@@ -1619,11 +1637,8 @@ const describe = (e: any): { name: string; detail: string } | undefined => {
   return undefined // Read/Grep 같은 탐색 도구는 노이즈라 제외
 }
 
-// 그룹 키: 덮어쓰기 목록 > 설치 색인(`p:<이름>`) > 기타
-const classify = (name: string, detail: string, idx: Index): string => {
-  const cat = CATALOG.find(c => c.match.test(name)) ?? CATALOG.find(c => c.match.test(detail))
-  if (cat) return cat.key
-
+// 호출한 도구가 어느 설치 항목(플러그인·스킬)의 것인지: 설치 색인에서 찾는다
+const resolveOwner = (name: string, idx: Index): string | undefined => {
   let owner: string | undefined
   if (name.startsWith('skill:')) {
     owner = idx.skillOwner.get(name.slice(6))
@@ -1638,6 +1653,23 @@ const classify = (name: string, detail: string, idx: Index): string => {
       owner = idx.items.find(i => rest === i.name || rest.startsWith(`${i.name}_`))?.name
     }
   }
+  return owner
+}
+
+// 사용 기록에 남길 이름: 색인에서 찾은 항목, 없으면 덮어쓰기 목록의 키와 이름이 같은 플러그인
+const ownerItem = (name: string, detail: string, idx: Index): string | undefined => {
+  const o = resolveOwner(name, idx)
+  if (o) return o
+  const cat = CATALOG.find(c => c.match.test(name)) ?? CATALOG.find(c => c.match.test(detail))
+  return cat ? idx.items.find(i => i.name.toLowerCase() === cat.key)?.name : undefined
+}
+
+// 그룹 키: 덮어쓰기 목록 > 설치 색인(`p:<이름>`) > 기타
+const classify = (name: string, detail: string, idx: Index): string => {
+  const cat = CATALOG.find(c => c.match.test(name)) ?? CATALOG.find(c => c.match.test(detail))
+  if (cat) return cat.key
+
+  const owner = resolveOwner(name, idx)
   if (owner) return `p:${owner}`
   // 목록에 없는 MCP 도구는 도구마다 따로 보이지 않게 서버 이름으로 묶는다
   if (name.startsWith('mcp__')) return `mcp:${name.split('__')[1] ?? name}`
@@ -1648,6 +1680,41 @@ const fmt = (at: number) => {
   const d = new Date(at)
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+// ---------------------------------------------------------------------------
+// 3-1) 사용 기록: 어떤 플러그인이 언제 마지막으로 쓰였는지 (세션이 바뀌어도 남는다)
+// ---------------------------------------------------------------------------
+let hist: History = emptyHistory(Date.now())
+let histWrote = 0
+let unusedDays = DEFAULT_DAYS
+
+const loadHistory = async ($: any) => {
+  const now = Date.now()
+  const raw = await safe($.store.get('use-history'))
+  hist = parseHistory(raw, now)
+  const d = await safe($.store.get('unused-days'))
+  unusedDays = DAY_OPTIONS.includes(d as number) ? (d as number) : DEFAULT_DAYS
+  if (raw === undefined || raw === null) await safe($.store.set('use-history', hist)) // 기록을 시작한 날을 남긴다
+}
+
+// 한 번 쓰인 것을 기록한다. 저장은 새 이름이 처음 나왔거나 마지막 저장 후 1분이 지났을 때만 한다
+const noteUse = async ($: any, name: string) => {
+  const now = Date.now()
+  const isNew = !hist.items[name]
+  hist = record(hist, name, now)
+  if (isNew || now - histWrote > 60_000) {
+    histWrote = now
+    const stored = parseHistory(await safe($.store.get('use-history')), now) // 다른 세션이 저장한 것과 합친다
+    hist = merge(hist, stored)
+    await safe($.store.set('use-history', hist))
+  }
+}
+
+const setUnusedDays = async ($: any, n: number) => {
+  unusedDays = n
+  await safe($.store.set('unused-days', n))
+  await setMove($, '__days', String(n)) // 화면을 다시 그리게 한다
 }
 
 // ---------------------------------------------------------------------------
@@ -1711,6 +1778,7 @@ export const register: Register = (on, options) => {
     await $.command.register({ name: 'ai-find', description: ui().findUsage, argumentHint: '[feature]' })
     void prepare($) // 설치된 스킬·플러그인 읽고, 필요하면 번역
     void loadAgents($).catch(() => {}) // 분업 설정을 불러오고, 켜져 있으면 에이전트 종류를 등록
+    void loadHistory($).catch(() => {}) // 사용 기록을 불러온다
     void $.ui.open({ id: PANE, title: ui().paneTitle })
     return next(e)
   })
@@ -1792,6 +1860,8 @@ export const register: Register = (on, options) => {
     if (!d) return next(e)
     const idx = await ensure($)
     const key = classify(d.name, d.detail, idx)
+    const own = ownerItem(d.name, d.detail, idx)
+    if (own) void noteUse($, own).catch(() => {})
     const use: Use = {
       id: e.tool_use_id,
       key,
@@ -2224,6 +2294,53 @@ export const register: Register = (on, options) => {
             </Box>
           )
     }
+    // 안 쓴 플러그인: 켜 둔 것 중 정한 기간 동안 한 번도 안 쓰인 것. 상시 토큰과 함께 보여주고 바로 끌 수 있다
+    const unusedSection = () => {
+      const pool = installed.filter(i => i.kind === 'plugin' && i.enabled && canToggleItem(i))
+      const un = unusedList(hist, pool.map(i => i.name), Date.now(), unusedDays)
+      const byName = new Map(pool.map(i => [i.name, i] as const))
+      const items = un.list.map(u => byName.get(u.name)).filter((x): x is Item => !!x)
+      const saved = items.reduce((n, i) => n + (costOf(i) ?? 0), 0)
+      return (
+        <Box flexDirection="column" marginTop={1}>
+          <Box gap={1}>
+            <Text bold>{ui().unTitle}</Text>
+            <Button
+              key="un-days"
+              label={ui().unDays(unusedDays)}
+              onPress={() => void setUnusedDays($, cycle(DAY_OPTIONS, unusedDays))}
+            />
+          </Box>
+          {!un.ready && <Text dimColor>{ui().unLearning(un.trackedDays, unusedDays)}</Text>}
+          {un.ready && un.list.length === 0 && <Text dimColor>{ui().unNone(unusedDays)}</Text>}
+          {un.ready &&
+            un.list.slice(0, 8).map(u => {
+              const it = byName.get(u.name)
+              const c = it ? costOf(it) : undefined
+              return (
+                <Box gap={1} paddingLeft={1}>
+                  <Text>{u.name}</Text>
+                  <Text dimColor>
+                    {u.lastDays === undefined ? ui().unNever : ui().unAgo(u.lastDays)}
+                    {c ? ` · ${ui().tokAlways(fmtTokens(c))}` : ''}
+                  </Text>
+                  {it && <Button key={`un-off-${u.name}`} label={ui().turnOff} onPress={() => void doToggle($, it)} />}
+                </Box>
+              )
+            })}
+          {un.ready && un.list.length > 8 && <Text dimColor>  …+{un.list.length - 8}</Text>}
+          {un.ready && items.length > 0 && !bulkBusy('unused') && (
+            <Button
+              key="un-off-all"
+              label={ui().unOffAll(items.length, saved > 0 ? fmtTokens(saved) : '')}
+              onPress={() => setMove($, 'bulk:unused:off', 'confirm')}
+            />
+          )}
+          {un.ready && bulkStatus('unused', items)}
+          <Text dimColor>{ui().unNote}</Text>
+        </Box>
+      )
+    }
     const plugCount = installed.filter(i => i.kind === 'plugin').length
     const skillCount = installed.filter(i => i.kind === 'skill').length
 
@@ -2351,6 +2468,7 @@ export const register: Register = (on, options) => {
             {sub !== 'skills' && bulkButtons('all', visible)}
             {sub !== 'skills' && bulkStatus('all', visible)}
             <Text> </Text>
+            {sub !== 'skills' && unusedSection()}
             {shownEntries.map(en => (en.type === 'header' ? headerRow(en.cat, en.items) : renderRow(en.it)))}
           </Box>
         )}

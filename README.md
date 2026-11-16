@@ -39,7 +39,7 @@ So I built a panel that "shows the tools you used, helps you find the ones you n
 - **Tokens**: no model is used to scan files. A model is used only for translation (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (55 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (63 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -96,6 +96,7 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 | Understand what a plugin does | the **Tools** tab, click its name to expand it |
 | Switch off plugins you don't use, to cut tokens | the **Tools** tab → the `Turn off` button on the plugin's row (see "Cautions" below) |
 | Hand each group's work to its own sub-agent with its own model and token budget | the **Environment** tab → "Division of work" → `Turn on`, then, per group, pick a model (Haiku, Sonnet, Opus 5.5, Fable 5.2 ... or type any model ID) and type a token budget such as `150k` |
+| Find plugins I installed but never use, and switch them off | the **Tools** tab → **Unused plugins**: enabled plugins not used for 7, 14 or 30 days, each with its always-loaded tokens and a `Turn off` button (after the plugin has been tracked for that long) |
 | See roughly how many tokens each plugin costs just by being switched on | the **Tools** tab: "always ~N tokens" under each plugin and a total at the top (an estimate; turning a plugin off removes it) |
 | Check how much of my usage limit is left before a big job | the line under the tabs: **Usage** (5-hour and 7-day bars with the time to reset); a note appears when you pass 80% |
 | Switch off or on many plugins at once | the **Tools** tab → `Turn all off` / `Turn all on`, or `Turn this group off` on a group such as Video (it asks first) |
@@ -131,10 +132,11 @@ ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches**
 | Hooks module | `hooks/register.tsx` | Registers the hooks below, reads your installed tools, draws the panel and runs the buttons. |
 | Trust rules | `hooks/trust.ts` | Pure functions that clean text written by other people, make safe names, commands and links, decide the source tier, raise caution flags, and rank suggestions by relevance and stars. No Claude Code needed to test them. |
 | Division of work | `hooks/agents.ts` | Pure functions for the per-group sub-agents: settings checks, safe agent definitions (only verified plugin names, never text written by others), token counting and the budget rule. |
+| Usage history | `hooks/history.ts` | Pure functions for the "unused plugins" list: recording, merging and cleaning the history (plugin name, last use, count) and deciding what counts as unused. |
 | Usage | `hooks/usage.ts` | Pure functions for the usage bars: percentage clean-up, level (ok / over half / near the limit), the text bar, time to reset. |
 | Categories | `hooks/categories.ts` | Pure functions that group plugins and skills by purpose (video, captions & voice, planning & docs, ...) from the words in their names and descriptions. |
 | State types | `types/index.d.ts` | The shape of what the panel keeps (log, tabs, suggestions). |
-| Tests | `test/trust.test.mjs`, `test/categories.test.mjs`, `test/agents.test.mjs`, `test/usage.test.mjs` | The safety, ranking, category, sub-agent and usage rules, run with `node --test test/`. |
+| Tests | `test/trust.test.mjs`, `test/categories.test.mjs`, `test/agents.test.mjs`, `test/usage.test.mjs`, `test/history.test.mjs` | The safety, ranking, category, sub-agent, usage and history rules, run with `node --test test/`. |
 | Install files | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | What `claude plugin install … --marketplace newpy15/ai-tool-tracker` reads. |
 
 ### What each hook does
@@ -167,6 +169,7 @@ ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches**
 
 - **The log and the panel's state** (which tab is open, the last suggestions) live in Claude Code's session state for this plugin. They are never sent anywhere.
 - **Translations** are cached across sessions so they are not repeated.
+- **A small usage history** (the plugin's name, the time it was last used, and a count; nothing else) is kept across sessions so the panel can tell which plugins went unused. It is never sent anywhere, and it is only filled in for tools this plugin can see being called. Plugins that help without being called (themes, for example) can look unused.
 - **Your files change only through buttons you press.** Switching plugins on or off and installing use the `claude` command. "Move to global" copies a folder-only skill into `~/.claude/skills` (or a session-only mod into `~/.claude/local-mods`), and "Remove old cache" and "Delete original" delete folders, each after a confirmation.
 
 ## What you can see
