@@ -1,122 +1,184 @@
 # ai-tool-tracker
 
-**Claude Code 옆에 붙는 패널입니다. 작업하면서 어떤 플러그인·스킬을 썼는지 실시간으로 보여주고, "동영상 만들어줘" 같은 요청에 쓸 만한 도구를 찾아 추천합니다.**
+**한국어 설명서: [README.ko.md](README.ko.md)**
 
-> English summary: a side panel for Claude Code. It logs which plugins, skills and MCP tools are used while you work, explains what each one is for, lets you turn plugins on/off, and suggests plugins (from a local directory and a live GitHub search) for what you are trying to build. Korean and English UI, plus ja/zh/es/fr/de through one-time cached translation. Windows desktop app only tested so far.
+**A side panel for Claude Code. It shows, in real time, which plugins and skills you use while you work, and suggests tools for requests like "make me a video". Plugins you don't use can be switched off with a button.**
 
-AI 코딩을 처음 시작하면 "어떤 플러그인이 있는지", "그게 어디에 쓰이는지"를 알기 어렵습니다. 이 플러그인은 그 두 가지를 한 화면에서 보게 해 주려고 만들었습니다.
+## Why I made it
 
-## 무엇을 해 주나요?
+AI coding feels overwhelming at first. Three things bothered me:
 
-패널에 탭이 네 개 있습니다.
+1. It is hard to tell **which tool was used for which part** of what I built. I would like to look back and see "the video was made with Remotion", but there is no record.
+2. I don't really know **which plugins exist or what each one is for**. When I say "make me a video", I wished someone would point out tools worth trying first.
+3. Installed plugins and skills put their descriptions in front of the AI on every turn, even when you don't use them, and that costs tokens. I wanted to switch off the ones I don't use.
 
-| 탭 | 하는 일 |
+So I built a panel that "shows the tools you used, helps you find the ones you need, and lets you switch off the ones you don't". I am publishing it on GitHub so that beginners can find plugins easily and we can share bugs and improvements. I built it in conversation with Claude Code and fixed things by checking on a real PC.
+
+## What I paid attention to
+
+- **Beginner-friendly**: a Korean and English screen, a one-line description for every tool, and a glossary. Japanese, Chinese, Spanish, French and German can be chosen too.
+- **Whether a suggested link can be trusted**: every suggestion shows its source tier and owner, and names, addresses and descriptions written by other people are never trusted as they are. (See "Can I trust the suggested links?" below.)
+- **Transparency**: everything it reads, sends over the internet and changes is written down. Nothing is sent or installed automatically.
+- **Tokens**: no model is used to scan files. A model is used only for translation (the lowest tier), and translations are saved so they are not repeated.
+- **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
+- **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
+- **Tests**: the safety rules have their own test file (7 tests) and were checked against all 3,700+ entries of the real directory.
+
+## What does it do?
+
+The panel has four tabs.
+
+| Tab | What it does |
 | --- | --- |
-| **도구** | 내 PC에 설치된 플러그인과 스킬을 설명과 함께 보여줍니다. 플러그인은 켜기/끄기를 할 수 있고, 이름을 누르면 안에 든 스킬·에이전트·MCP 서버가 펼쳐집니다. 스킬은 `/이름` 으로 부르는 방법도 보여줍니다. |
-| **실시간 로그** | 작업 중 쓰인 도구(스킬, 플러그인, 파일 편집, 명령 실행, 서브에이전트 등)를 시간순으로 쌓고, 종류별로 묶어 "무엇에 쓰이는 도구인지" 한 줄 설명을 붙입니다. |
-| **추천** | "동영상과 pdf 만들어줘"처럼 말하면 주제(동영상, 문서 등)를 알아보고 맞는 도구를 주제별로 보여줍니다. 이 PC에 받아 둔 플러그인 디렉터리에서 먼저 찾고, 버튼을 누르면 GitHub에서 실시간으로 더 찾습니다. |
-| **환경** | 언어 선택, 내 PC에서 무엇을 읽었는지(감지한 환경), 옛 버전 캐시 지우기, 특정 폴더에서만 쓰는 도구를 전체로 옮기기. |
+| **Tools** | Shows the **plugins** and **skills** installed on your PC with descriptions. Plugins can be turned on and off, and clicking a name expands the skills, agents and MCP servers inside it. For skills it also shows how to call them with `/name`. |
+| **Live log** | Stacks the tools used while you work (skills, plugins, file edits, commands, subagents and so on) in time order, grouped by kind, with a one-line description of "what this tool is for". |
+| **Suggestions** | When you say something like "make a video and a pdf", it recognizes the topic (video, documents, ...) and shows matching tools per topic. It searches the plugin directory stored on your PC first, and when you press a button it searches GitHub live for more. |
+| **Environment** | Language choice, what it read on your PC ("Detected environment"), translation progress, removing old cached versions, and moving tools that only work in one folder to global. |
 
-## 설치
+## Install
 
-터미널의 Claude Code에서:
+In Claude Code in a terminal:
 
 ```
 /plugin install ai-tool-tracker --marketplace newpy15/ai-tool-tracker
 ```
 
-셸(명령 프롬프트, PowerShell 등)에서:
+In a shell (Command Prompt, PowerShell and so on):
 
 ```
 claude plugin install ai-tool-tracker --marketplace newpy15/ai-tool-tracker
 ```
 
-데스크톱 앱에서는 `/plugin` 이 동작하지 않으므로: 입력창 옆 **+** → **Plugins** → **Add marketplace** 에 `newpy15/ai-tool-tracker` 입력 → **Add plugin**.
+`/plugin` does not work in the desktop app, so there: click **+** next to the input box → **Plugins** → **Add marketplace**, enter `newpy15/ai-tool-tracker` → **Add plugin**.
 
-설치 중 "Add marketplace?" 질문에는 `y`, 범위는 보통 첫 번째(user)를 고르면 됩니다. 설치한 뒤 Claude Code를 새로 시작하면 패널이 열립니다.
+- When asked "Add marketplace?" answer `y`. For the scope, the first one (user) is usually right.
+- Right after installing you may see a note that "1 setting (language) is not set yet". It works with the default (Korean), so you can leave it, and you can change the language later in the **Environment** tab of the panel.
+- It becomes active as soon as it is installed. If you don't see the panel, type `/ai-tools` in the input box. If it still doesn't show up, quit Claude Code completely and start it again.
 
-## 사용법
+## Your first 5 minutes
 
-| 입력 | 하는 일 |
+1. **Install**: install it as described above.
+2. **Open the panel**: the panel opens automatically when you start. If you don't see it, type `/ai-tools`.
+3. **Look at the Tools tab**: switch between the `Plugins` and `Skills` buttons and read what is installed on your PC and what each item does. Click a name to expand what is inside.
+4. **Work as usual**: while you work, open the **Live log** tab to see the tools that were just used, stacked by kind.
+5. **Find tools**: say what you want to build (`make me a video`), or type `/ai-find video production`, then look at the **Suggestions** tab.
+
+## When you want to...
+
+| What you want to do | How |
 | --- | --- |
-| `/ai-tools` | 패널을 열고 설치된 도구 목록을 다시 읽습니다. 플러그인을 새로 깔거나 지운 뒤에 한 번 입력하세요. |
-| `/ai-find 동영상 제작` | 원하는 기능으로 도구를 찾습니다. 이 PC의 디렉터리와 GitHub를 함께 찾고, 결과는 **추천** 탭에 나옵니다. |
-| `/ai-log 이미지생성도구 로고 시안` | Claude Code 밖에서 쓴 도구를 직접 기록합니다. (밖에서 쓴 것은 자동으로 알 수 없습니다.) |
+| See which tools were just used | the **Live log** tab |
+| Understand what a plugin does | the **Tools** tab, click its name to expand it |
+| Switch off plugins you don't use, to cut tokens | the **Tools** tab → the `Turn off` button on the plugin's row (see "Cautions" below) |
+| Find tools for what you want to build | say it, or `/ai-find what you want` → the **Suggestions** tab |
+| Change the screen language | the language buttons at the top of the **Environment** tab |
+| The list didn't change after installing or removing a plugin | `/ai-tools` |
+| Record a tool you used outside Claude Code | `/ai-log tool-name what-you-did` |
 
-- 일반 대화 중에 "동영상 만들어줘", "pdf 만들어줘"처럼 주제가 담긴 말을 하면 알림이 뜨고 **추천** 탭에 결과가 쌓입니다. 이때는 이 PC의 디렉터리만 읽습니다.
-- **추천 결과는 설치를 대신 해 주지 않습니다.** 설치 명령을 복사해 드릴 뿐입니다. 항목마다 출처 등급과 소유자가 붙으니, 아래 "추천 링크를 믿어도 되나요?"를 읽고 설치 전에 코드와 권한을 직접 확인하세요.
+## Commands
 
-## 추천 링크를 믿어도 되나요?
-
-추천 목록의 이름, 설명, 주소는 모두 **남이 쓴 글**입니다. 그래서 이 플러그인은 믿을 만한 정도를 항목마다 보여주고, 남이 쓴 글을 그대로 믿지 않도록 만들었습니다. **다만 이 표시는 참고용이며 안전을 보장하지 않습니다.**
-
-**출처 등급 (항목마다 표시)**
-
-| 표시 | 뜻 |
+| Input | What it does |
 | --- | --- |
-| 공식 마켓플레이스 | Claude 공식 마켓플레이스(`claude-plugins-official`)에 든 것 |
-| Anthropic 검토 / 파트너 검토 | 플러그인 디렉터리 기록에 그 쪽의 검토가 끝났다고 적힌 것 |
-| 내가 추가한 마켓플레이스 | 내가 직접 추가한 마켓플레이스에 든 것 |
-| 디렉터리 등록 · 검토 전 | 디렉터리에 올라 있지만 검토 기록이 없는 것 (이 PC의 디렉터리 기준 3,700여 개 중 대부분) |
-| 출처 미확인 (GitHub 검색) | GitHub 검색에서 나온 것. 디렉터리에도 있으면 그 등급을 따릅니다 |
+| `/ai-tools` | Opens the panel and re-reads the installed tools. Type it once after installing or removing a plugin. |
+| `/ai-find video production` | Finds tools for the feature you want. It searches both the directory on your PC and GitHub, and the results appear in the **Suggestions** tab. With several topics (`video pdf`) it shows each topic separately. |
+| `/ai-log image-tool logo draft` | Records a tool you used outside Claude Code by hand. (Tools used outside cannot be detected automatically.) |
 
-- **소유자(GitHub 계정)를 항상 같이 보여줍니다.** 이름만 비슷한 도구가 실제로 있습니다. 예를 들어 `Figma`의 소유자는 공식 `figma`지만 "figma-suite" 같은 이름은 다른 개인 계정의 것입니다. 소유자가 맞는지 먼저 보세요.
-- **GitHub 결과에는 주의 신호가 붙습니다.** 1년 넘게 갱신이 없음, 만든 지 30일이 안 됨, 라이선스 없음, 다른 저장소의 복제본, 별 수에 비해 복제한 사람이 아주 적음(별 수는 조작될 수 있습니다). 정렬은 출처 등급, 주의 신호가 적은 순, 별 수 순입니다.
+- If you say something with a topic in it during a normal conversation, like "make me a video" or "make a pdf", a notification appears and results pile up in the **Suggestions** tab. This reads only the directory on your PC. The same topic is announced at most once every 10 minutes, and nothing is announced if you already have everything that matched.
+- **Suggestions never install anything for you.** They only copy an install command. Every item shows its source tier and owner, so read "Can I trust the suggested links?" below and check the code and permissions yourself before installing.
 
-**남이 쓴 글을 그대로 믿지 않습니다**
+## Can I trust the suggested links?
 
-- 링크는 목록에 적힌 주소를 쓰지 않고, 검증한 `owner/repo`로 `https://github.com/…` 주소를 직접 만듭니다. `github.com`이 아닌 주소는 링크로 만들지 않습니다.
-- 설치 명령은 이름이 영문자, 숫자, `.`, `_`, `-`로만 이루어졌을 때만 만듭니다. 실제 디렉터리에는 `S&P Global`처럼 명령에 그대로 쓰면 위험한 특수문자가 든 이름이 66개 있습니다. 그런 것은 저장소 주소 기반 명령으로 바꾸고, 그것도 안전하지 않으면 명령을 만들지 않습니다.
-- 화면에 찍기 전에 줄바꿈, 제어 문자, 글자 방향을 뒤집는 문자 같은 눈속임 글자를 없앱니다.
-- 설치는 대신 해 주지 않습니다. 명령을 복사해 드리고, 어떤 명령인지 화면에 그대로 보여줍니다.
+The names, descriptions and addresses in the suggestion list are all **text written by other people**. So this plugin shows how far each item can be trusted, and is built not to trust other people's text as it is. **Still, these labels are only a hint and do not guarantee safety.**
 
-이 규칙은 `hooks/trust.ts`에 있고, Claude Code 없이 단독으로 시험할 수 있습니다: `node --test test/` (Node 23.6 이상). 허점을 발견하면 Issues로 알려 주세요.
+**Source tier (shown on every item)**
 
-## 용어를 모르신다면
+| Label | Meaning |
+| --- | --- |
+| Official marketplace | In Claude's official marketplace (`claude-plugins-official`) |
+| Reviewed by Anthropic / Reviewed (partner) | The plugin directory record says that review is done |
+| A marketplace you added | In a marketplace you added yourself |
+| Listed in directory · not reviewed | Listed in the directory but with no review record (most of the 3,700+ entries in the directory on my PC) |
+| Unverified source (GitHub search) | Came from a GitHub search. If it is also in the directory, it takes that tier |
 
-- **플러그인**: Claude Code에 기능을 덧붙이는 묶음입니다. 스킬, 에이전트, MCP 서버, 훅을 담을 수 있습니다.
-- **스킬**: 특정 작업의 방법을 적어 둔 지침서입니다. 부르거나 Claude가 필요하다고 판단할 때만 읽어서 따릅니다. 안 쓰는 동안은 이름과 한 줄 설명만 올라가 있습니다.
-- **MCP 서버**: 외부 서비스(Notion, Figma 등)와 연결해 주는 도구입니다.
-- **훅**: 어떤 일이 일어날 때 자동으로 실행되는 코드입니다. 켜져 있는 동안 계속 동작하므로, 끄면 효과가 가장 큽니다.
+- **The owner (GitHub account) is always shown.** Look-alike names really exist. For example the owner of `Figma` is the official `figma`, but a name like "figma-suite" belongs to another individual account. Check that the owner is right first.
+- **GitHub results carry caution flags.** Not updated for over a year, less than 30 days old, no license, a fork of another repository, very few forks for its star count (star counts can be faked). Results are ordered by source tier, then fewer caution flags, then star count.
 
-## 내 컴퓨터에서 무엇을 하나요? (투명하게 적습니다)
+**Other people's text is not trusted as it is**
 
-**읽는 것**: Claude 설정 폴더(`~/.claude`, 또는 `CLAUDE_CONFIG_DIR`로 지정한 곳)의 설치 기록, 스킬 파일, 설정, 플러그인 디렉터리 캐시, 알려진 프로젝트 목록.
+- A link is not taken from the address in the list. It is built directly as `https://github.com/…` from a verified `owner/repo`. An address that is not `github.com` never becomes a link.
+- An install command is built only when the name consists of letters, digits, `.`, `_` and `-`. The real directory has 66 names such as `S&P Global` with special characters that are dangerous to paste into a command as they are. Those are turned into a command based on the repository address, and if that is not safe either, no command is built.
+- Before anything is drawn on screen, tricky characters such as line breaks, control characters and characters that flip the text direction are removed.
+- Nothing is installed for you. The command is copied, and shown on screen exactly as it is.
 
-**인터넷으로 나가는 것**
-- GitHub 검색: **추천 탭의 버튼을 누르거나 `/ai-find`를 입력했을 때만**, `video` 같은 검색어 한 단어가 `api.github.com`으로 나갑니다. 대화 내용이나 로그인 정보는 보내지 않습니다.
-- 모델 호출(번역): 한국어·영어 외의 언어를 고르거나 추천 설명을 번역할 때, 현재 세션의 모델(haiku, 가장 낮은 등급)을 소량 호출합니다. 번역은 저장해 두고 다시 하지 않습니다.
-- 말한 내용의 원문은 저장하지도, 전송하지도 않습니다. 감지한 주제와 검색어만 씁니다.
+These rules live in `hooks/trust.ts` and can be tested on their own, without Claude Code: `node --test test/` (Node 23.6 or newer). If you find a gap, please tell me in Issues.
 
-**바꾸는 것 (버튼을 눌렀을 때만)**
-- 플러그인 켜기/끄기: `claude plugin enable|disable`을 실행합니다. **확인 창 없이 바로 적용되며**, 언제든 다시 켤 수 있습니다.
-- 폴더 전용 도구를 전체로 옮기기: 확인 후 복사합니다. 원본 삭제는 따로 한 번 더 확인합니다.
-- 옛 캐시 지우기: 현재 설치된 버전과 사용 중 표시가 있는 폴더는 건드리지 않습니다. 확인 후 지웁니다.
-- 이 플러그인 자신은 끌 수 없게 막아 두었습니다.
+## How many tokens does it use?
 
-## 알려진 한계
+- **The plugin itself adds nothing to the conversation (what the model reads).** The panel screen and the log never go to the model.
+- A model is called in only two cases: when translating descriptions into the chosen language (including when English descriptions are shown in Korean), and when turning a Korean search word that is not in the dictionary into an English search word. Both use the lowest tier (haiku), and translations are saved so they are not repeated. A model is not used to scan files.
+- **Other plugins you installed use tokens on their own.** The names and one-line descriptions of skills and subagents go to the AI on every turn. By a rough count from character counts (not real token counts), on the author's PC the descriptions of 9 plugins and 15 skills came to about 6,600 tokens per turn, and switching off the 3 biggest saved about 3,700 tokens. Switching off what you don't use is the surest saving.
 
-- **윈도우의 Claude Code 데스크톱 앱에서만 확인했습니다.** 맥, 리눅스, 터미널, VS Code에서는 확인하지 못했습니다. 코드에 맥·리눅스용 분기는 있지만 실행해 본 적이 없습니다.
-- Claude Code의 플러그인 기능(패널을 그리는 기능)은 아직 초기 단계라, Claude Code가 업데이트되면 동작이 바뀔 수 있습니다.
-- Claude Code 전용입니다. Claude Code 밖에서 쓴 도구는 자동으로 알 수 없어서, 필요하면 `/ai-log`로 직접 기록해야 합니다.
-- 추천은 단어 사전으로 주제를 알아봅니다. 사전에 없는 주제는 놓칠 수 있고(그럴 땐 `/ai-find 원하는 기능`), 별 개수가 많다고 좋은 도구는 아닙니다.
-- **출처 등급과 주의 신호는 디렉터리 기록과 GitHub 응답에 든 값만으로 정한 것입니다.** 저장소의 코드를 직접 읽어 안전한지 검사하지는 않습니다. 소유자 이름이 맞아도 코드가 안전하다는 뜻은 아닙니다.
-- GitHub 검색은 로그인 없이 쓰므로 1분에 10번까지입니다.
-- 번역 품질은 모델에 따라 다릅니다. 어색한 번역을 발견하면 알려 주세요.
+## Cautions
 
-## 오류 제보와 개선 제안
+- **Turning plugins on or off takes effect right away, with no confirmation.** Switching off does not delete files, it only changes a setting, so you can turn it back on any time. It actually takes effect **the next time Claude Code starts**.
+- **Removing old cache cannot be undone.** It does not touch the installed version or folders marked as in use, and it asks for confirmation before deleting.
+- **"Move to global" is a copy.** The original stays, and deleting the original is a separate confirmation. If you edit the original after copying, the copy is not updated automatically.
+- **Suggestions do not guarantee safety.** Before installing, check that the owner is right, and read the repository code and the permissions it asks for.
+- **Be careful with `Turn off`.** If you switch off a plugin you are using, that feature is gone from the next start. Press `Turn on` to bring it back.
+- Turning on and off, moving, and install-related features use the `claude` command. They may fail where this command is missing (for example if you only use the desktop app). "Detected environment" in the Environment tab shows whether it is available.
+- This plugin uses a part of Claude Code's plugin features that is still early. If Claude Code is updated, the behavior may change.
 
-[Issues](https://github.com/newpy15/ai-tool-tracker/issues)에 남겨 주세요. 양식을 준비해 두었습니다.
+## What does it do on my computer? (written out openly)
 
-- 오류: 패널 **환경** 탭의 "감지한 환경" 내용을 붙여 주시면 원인을 찾기 쉽습니다. (사용자 이름이 든 경로는 가려 주세요.)
-- 제안: "이런 말을 했을 때 이런 도구가 추천되면 좋겠다"처럼 예시가 있으면 더 좋습니다.
+**What it reads**: the install records, skill files, settings, the plugin directory cache and the list of known projects in Claude's config folder (`~/.claude`, or wherever `CLAUDE_CONFIG_DIR` points).
 
-## 만든 이유
+**What goes out over the internet**
+- GitHub search: **only when you press the button in the Suggestions tab or type `/ai-find`**, one search word such as `video` goes to `api.github.com`. Your conversation and login information are not sent.
+- Model calls: only the two cases written in "How many tokens does it use?" above.
+- The original text of what you said is neither saved nor sent. Only the detected topic and search words are used.
 
-> 처음 AI 개발을 시작하면 어떤 플러그인이 있는지, 어디에 쓰는지 알기 어렵습니다. 그래서 "내가 쓴 도구를 보고, 필요한 도구를 찾아 주는" 패널을 만들어 보았습니다.
->
-> *(여기에 만든 분의 이야기를 직접 적어 주세요.)*
+**What it changes (only when you press a button)**
+- Turning plugins on or off: runs `claude plugin enable|disable`.
+- Moving a folder-only tool to global: copies after confirmation. Deleting the original is confirmed separately once more.
+- Removing old cache: deletes after confirmation.
+- The plugin cannot switch itself off.
 
-## 라이선스
+## Known limitations
+
+- **Only checked on the Claude Code desktop app on Windows.** I have not checked Mac, Linux, the terminal or VS Code. The code has Mac and Linux branches but I have never run them.
+- It is for Claude Code only. Tools you use outside Claude Code cannot be detected automatically, so record them by hand with `/ai-log` if you need to.
+- **Suggestions depend on the plugin directory file stored on your PC (`plugin-directory-cache-v2.json`).** If the file is missing or renamed, it searches only the marketplaces you added. GitHub search works either way.
+- Suggestions recognize topics with a word dictionary. A topic that is not in the dictionary can be missed (then use `/ai-find what you want`), and a high star count does not mean a good tool.
+- **The source tier and caution flags are decided only from values in the directory record and the GitHub response.** It does not read the repository code to check that it is safe. A correct owner name does not mean the code is safe.
+- GitHub search is used without logging in, so it is limited to 10 searches per minute.
+- Translation quality depends on the model. If you find an awkward translation, please tell me.
+
+## When something goes wrong
+
+| Symptom | What to try |
+| --- | --- |
+| I can't see the panel | Type `/ai-tools`. If that doesn't work, quit Claude Code completely and start it again. |
+| The panel only says "Nothing to show yet" | It means the panel hit an error while drawing. Type `/ai-tools` again, and if it keeps happening, paste the error line shown in the chat (`ai-tool-tracker: … hook skipped`) into Issues. |
+| Descriptions show in English | A translation may still be in progress. If it is still the same after a few minutes, check "Translation" in the Environment tab and tell me. |
+| No suggestions appear | The topic may not be in the dictionary. Search directly with `/ai-find what you want`. |
+| GitHub search fails with "rate limit" | Searches without login are limited to 10 per minute. Try again after a minute. |
+| Turning on/off or moving fails | In the Environment tab, check "Detected environment" to see whether the `claude` command is available. |
+| Something is off on Mac or Linux | I have not been able to check those. Please tell me in Issues together with your environment details. |
+
+## If you don't know the terms
+
+- **Plugin**: a bundle that adds features to Claude Code. It can hold skills, agents, MCP servers and hooks.
+- **Skill**: a written guide for how to do a particular task. It is read and followed only when it is called, or when Claude decides it is needed. While unused, only its name and one-line description are loaded.
+- **MCP server**: a tool that connects to an outside service (Notion, Figma and so on).
+- **Hook**: code that runs automatically when something happens. It keeps running while it is on, so switching it off has the biggest effect.
+
+## Reporting bugs and suggesting improvements
+
+Please post them in [Issues](https://github.com/newpy15/ai-tool-tracker/issues). Forms are ready.
+
+- Bugs: pasting the "Detected environment" text from the panel's **Environment** tab makes the cause easier to find. (Please hide any path that contains your user name.)
+- Suggestions: an example such as "when I say this, I'd like this tool to be suggested" helps even more.
+
+## License
 
 [MIT](LICENSE)
