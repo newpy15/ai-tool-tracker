@@ -58,13 +58,17 @@ test('shouldWarn: 단계가 올라갈 때만, 같은 단계에서는 반복하�
   assert.equal(u.shouldWarn(undefined, 'high'), true)
 })
 
-test('overGuard: 7일·5시간 중 하나라도 넘으면 알리고, 값을 모르면 막지 않는다', () => {
+test('overGuard: 5시간·주간을 따로 보고, 0이면 그 기준은 쓰지 않는다', () => {
   const l = (f, s) => [{ kind: 'five_hour', percentUsed: f }, { kind: 'seven_day', percentUsed: s }]
-  assert.equal(u.overGuard(l(79, 10), 80), undefined)
-  assert.deepEqual(u.overGuard(l(80, 10), 80), { kind: 'five_hour', percent: 80 })
-  assert.deepEqual(u.overGuard(l(10, 85), 80), { kind: 'seven_day', percent: 85 })
-  assert.equal(u.overGuard([], 50), undefined)
-  assert.equal(u.overGuard(undefined, 50), undefined)
+  assert.equal(u.overGuard(l(79, 10), 80, 80), undefined)
+  assert.deepEqual(u.overGuard(l(80, 10), 80, 80), { kind: 'five_hour', percent: 80, guard: 80 })
+  assert.deepEqual(u.overGuard(l(10, 85), 80, 80), { kind: 'seven_day', percent: 85, guard: 80 })
+  assert.equal(u.overGuard(l(99, 10), 0, 80), undefined)
+  assert.deepEqual(u.overGuard(l(99, 85), 0, 80), { kind: 'seven_day', percent: 85, guard: 80 })
+  assert.equal(u.overGuard(l(10, 99), 80, 0), undefined)
+  assert.deepEqual(u.overGuard(l(65, 65), 60, 90), { kind: 'five_hour', percent: 65, guard: 60 })
+  assert.equal(u.overGuard([], 50, 50), undefined)
+  assert.equal(u.overGuard(undefined, 50, 50), undefined)
 })
 
 test('attribute: 스킬·에이전트·MCP 설명 토큰을 플러그인별로 모은다', () => {

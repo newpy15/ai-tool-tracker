@@ -42,11 +42,20 @@ export const pickWindow = (list: unknown, kind: string): Window | undefined => {
 export const shouldWarn = (prev: Level | undefined, next: Level): boolean =>
   (next === 'high' || next === 'full') && prev !== next && (prev === undefined || prev === 'ok' || prev === 'mid' || next === 'full')
 
-/** 사용량 보호: 5시간·7일 중 하나라도 guard% 이상이면 그 창을 돌려준다. 값을 모르면 막지 않는다 */
-export const overGuard = (list: unknown, guard: number): { kind: 'five_hour' | 'seven_day'; percent: number } | undefined => {
-  for (const kind of ['seven_day', 'five_hour'] as const) {
+/**
+ * 사용량 보호: 5시간 기준(guard5)과 주간 기준(guard7)을 따로 본다. 0이면 그 기준은 쓰지 않는다.
+ * 기준을 넘은 창을 돌려준다(주간 먼저). 값을 모르거나 해당 기준이 꺼져 있으면 막지 않는다.
+ */
+export const overGuard = (
+  list: unknown,
+  guard5: number,
+  guard7: number,
+): { kind: 'five_hour' | 'seven_day'; percent: number; guard: number } | undefined => {
+  const rules = [['seven_day', guard7], ['five_hour', guard5]] as const
+  for (const [kind, g] of rules) {
+    if (g <= 0) continue
     const w = pickWindow(list, kind)
-    if (w && w.percent >= guard) return { kind, percent: w.percent }
+    if (w && w.percent >= g) return { kind, percent: w.percent, guard: g }
   }
   return undefined
 }

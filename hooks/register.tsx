@@ -10,7 +10,7 @@ import type { Tier } from './trust'
 import { categorize, CATEGORY_ORDER } from './categories'
 import type { CatKey } from './categories'
 import {
-  addUsage, AGENT_CATS, buildSpec, GUARDS, MAX_SPAWNS_PER_PROMPT, catOfType, cfgOf, cycle, DEFAULT_SETTINGS, fmtTokens, isOver, MODEL_PRESETS,
+  addUsage, AGENT_CATS, buildSpec, MAX_SPAWNS_PER_PROMPT, nextGuard, catOfType, cfgOf, cycle, DEFAULT_SETTINGS, fmtTokens, isOver, MODEL_PRESETS,
   modelLabel, changeModel, fit, limitsOf, parseModel, parseSettings, parseTokens, parseTurns, PLUGIN_ID, tokensOf,
 } from './agents'
 import type { AgentSettings, AgentUse } from './agents'
@@ -231,7 +231,8 @@ const UI = {
       `${label} 사용량이 ${p}%라서(보호 기준 ${g}%) 새 하위 에이전트를 시작하지 않았습니다. 초기화된 뒤에 다시 시도하거나, 환경 탭에서 보호 기준을 올릴 수 있습니다.`,
     spawnCap: (n: number) => `한 번의 요청에서는 하위 에이전트를 ${n}개까지만 시작합니다. 나머지는 다음 요청에서 하세요.`,
     agGuard: '사용량 보호',
-    agGuardHint: '5시간·7일 사용량 중 하나라도 이 퍼센트 이상이면 새 하위 에이전트를 시작하지 않습니다. 끌 수는 없습니다.',
+    agGuardOff: '쓰지 않음',
+    agGuardHint: '5시간과 주간(7일) 기준을 따로 고릅니다. 그 사용량이 정한 퍼센트 이상이면 새 하위 에이전트를 시작하지 않습니다. 둘 다 끌 수는 없습니다.',
     tokAlways: (t: string) => `상시 약 ${t} 토큰`,
     tokOffNote: '꺼져 있어 토큰을 쓰지 않음',
     tokTotal: (t: string, n: number) => `켜 둔 플러그인 ${n}개가 대화마다 미리 차지하는 양: 약 ${t} 토큰`,
@@ -432,7 +433,8 @@ const UI = {
       `${label} usage is ${p}% (protection threshold ${g}%), so no new sub-agent was started. Try again after the reset, or raise the threshold in the Environment tab.`,
     spawnCap: (n: number) => `Only ${n} sub-agents are started per request. Do the rest in the next request.`,
     agGuard: 'Usage protection',
-    agGuardHint: 'When either the 5-hour or the 7-day usage is at or above this percentage, no new sub-agent is started. It cannot be turned off.',
+    agGuardOff: 'not used',
+    agGuardHint: 'Choose the 5-hour and the weekly (7-day) thresholds separately. No new sub-agent is started when that usage is at or above its percentage. You cannot turn both off.',
     tokAlways: (t: string) => `always ~${t} tokens`,
     tokOffNote: 'off, so it uses no tokens',
     tokTotal: (t: string, n: number) => `Loaded up front in every conversation by ${n} enabled plugins: about ${t} tokens`,
@@ -1820,8 +1822,8 @@ export const register: Register = (on, options) => {
     if (cat === undefined) return next(e)
     // 1) 사용량 보호: 5시간·7일 중 하나라도 기준을 넘었으면 새 하위 에이전트를 시작하지 않는다
     const lim = await safe($.session.usage())
-    const hit = overGuard(lim?.rateLimits, agentSet.guard)
-    if (hit) return { deny: ui().guardDeny(hit.kind === 'five_hour' ? ui().usFive : ui().usSeven, Math.round(hit.percent), agentSet.guard) }
+    const hit = overGuard(lim?.rateLimits, agentSet.guard5, agentSet.guard7)
+    if (hit) return { deny: ui().guardDeny(hit.kind === 'five_hour' ? ui().usFive : ui().usSeven, Math.round(hit.percent), hit.guard) }
     // 2) 한 요청에서 한꺼번에 너무 많이 띄우지 못하게 한다
     if (spawnCount >= MAX_SPAWNS_PER_PROMPT) return { deny: ui().spawnCap(MAX_SPAWNS_PER_PROMPT) }
     const cfg = cfgOf(agentSet, cat)
@@ -2418,12 +2420,21 @@ export const register: Register = (on, options) => {
         </Box>
         {agCfg.on && (
           <Box flexDirection="column" marginTop={1}>
-            <Box gap={1}>
-              <Text bold>{ui().agGuard}:</Text>
+            <Text bold>{ui().agGuard}</Text>
+            <Box gap={1} paddingLeft={2}>
+              <Text dimColor>{ui().usFive}:</Text>
               <Button
-                key="ag-guard"
-                label={`${agCfg.guard}%`}
-                onPress={() => void saveAgents($, { ...agCfg, guard: cycle(GUARDS, agCfg.guard) })}
+                key="ag-guard5"
+                label={agCfg.guard5 === 0 ? ui().agGuardOff : `${agCfg.guard5}%`}
+                onPress={() => void saveAgents($, { ...agCfg, guard5: nextGuard(agCfg.guard5, agCfg.guard7) })}
+              />
+            </Box>
+            <Box gap={1} paddingLeft={2}>
+              <Text dimColor>{ui().usSeven}:</Text>
+              <Button
+                key="ag-guard7"
+                label={agCfg.guard7 === 0 ? ui().agGuardOff : `${agCfg.guard7}%`}
+                onPress={() => void saveAgents($, { ...agCfg, guard7: nextGuard(agCfg.guard7, agCfg.guard5) })}
               />
             </Box>
             <Text dimColor>{ui().agGuardHint}</Text>

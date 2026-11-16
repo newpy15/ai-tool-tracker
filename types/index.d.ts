@@ -59,7 +59,7 @@ export type RecoState = {
 /** 용도별 하위 에이전트 한 묶음의 설정 (hooks/agents.ts의 AgentCfg와 같은 모양) */
 export type AgentCfg = { model: string; budget: number; maxTurns: number }
 /** 하위 에이전트 설정 전체: 켜짐 여부와 묶음별 설정 */
-export type AgentSettings = { on: boolean; guard: number; cats: Record<string, AgentCfg> }
+export type AgentSettings = { on: boolean; guard5: number; guard7: number; cats: Record<string, AgentCfg> }
 /** 묶음별로 쓴 실행 횟수와 토큰 */
 export type AgentUse = Record<string, { runs: number; tokens: number }>
 

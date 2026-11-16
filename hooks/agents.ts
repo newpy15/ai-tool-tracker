@@ -81,16 +81,25 @@ export const parseTurns = (t: unknown): number | undefined => {
 }
 
 export type AgentCfg = { model: AgentModel; budget: number; maxTurns: number }
-export type AgentSettings = { on: boolean; guard: number; cats: Partial<Record<CatKey, AgentCfg>> }
+export type AgentSettings = { on: boolean; guard5: number; guard7: number; cats: Partial<Record<CatKey, AgentCfg>> }
 export type AgentUse = Record<string, { runs: number; tokens: number }>
 
 export const DEFAULT_CFG: AgentCfg = { model: 'inherit', budget: 100_000, maxTurns: 10 } // limitsOf('inherit')의 기본값과 같다(시험이 확인)
-/** 사용량 보호: 5시간·7일 사용량이 이 퍼센트 이상이면 새 하위 에이전트를 시작하지 않는다 (끌 수 없다) */
-export const GUARDS = [50, 60, 70, 80, 90]
+/**
+ * 사용량 보호: 5시간 기준과 주간(7일) 기준을 따로 고른다. 사용량이 그 퍼센트 이상이면 새 하위 에이전트를 시작하지 않는다.
+ * 0은 그 기준을 쓰지 않는다는 뜻이다. 둘 다 끌 수는 없다(하나는 반드시 켜져 있다).
+ */
+export const GUARDS = [0, 50, 60, 70, 80, 90]
 export const DEFAULT_GUARD = 80
+
+/** 다음 값으로 돌린다. 다른 기준이 꺼져 있으면 0(끔)은 건너뛴다: 둘 다 꺼지지 않게 */
+export const nextGuard = (cur: number, other: number): number => {
+  const nx = cycle(GUARDS, cur)
+  return nx === 0 && other === 0 ? cycle(GUARDS, 0) : nx
+}
 /** 한 번의 요청(프롬프트)에서 시작할 수 있는 하위 에이전트 수. 한꺼번에 여러 개 띄워 한도를 넘기는 것을 막는다 */
 export const MAX_SPAWNS_PER_PROMPT = 4
-export const DEFAULT_SETTINGS: AgentSettings = { on: false, guard: DEFAULT_GUARD, cats: {} }
+export const DEFAULT_SETTINGS: AgentSettings = { on: false, guard5: DEFAULT_GUARD, guard7: DEFAULT_GUARD, cats: {} }
 export const PLUGIN_ID = 'ai-tool-tracker'
 
 /** 에이전트를 만들 수 있는 묶음 ("기타"는 하나로 묶을 일이 없어 뺀다) */
@@ -123,7 +132,12 @@ export const parseSettings = (raw: unknown): AgentSettings => {
       maxTurns: ok(c.maxTurns, lim.turns) ? c.maxTurns : lim.turns.def,
     }
   }
-  return { on: r.on === true, guard: GUARDS.includes(r.guard) ? r.guard : DEFAULT_GUARD, cats }
+  // 예전 버전은 기준이 하나(guard)였다: 둘에 같은 값을 쓴다
+  const legacy = GUARDS.includes(r.guard) && r.guard > 0 ? r.guard : DEFAULT_GUARD
+  let guard5 = GUARDS.includes(r.guard5) ? r.guard5 : legacy
+  const guard7 = GUARDS.includes(r.guard7) ? r.guard7 : legacy
+  if (guard5 === 0 && guard7 === 0) guard5 = DEFAULT_GUARD // 둘 다 꺼진 채로는 저장하지 않는다
+  return { on: r.on === true, guard5, guard7, cats }
 }
 
 export const cfgOf = (s: AgentSettings, cat: CatKey): AgentCfg => s.cats[cat] ?? DEFAULT_CFG

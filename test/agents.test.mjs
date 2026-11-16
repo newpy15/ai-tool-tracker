@@ -5,7 +5,7 @@ import { CATEGORY_ORDER } from '../hooks/categories.ts'
 import { safeName } from '../hooks/trust.ts'
 
 test('parseSettings: 엉뚱한 값은 기본값으로 바로잡는다', () => {
-  assert.deepEqual(m.parseSettings(null), { on: false, guard: 80, cats: {} })
+  assert.deepEqual(m.parseSettings(null), { on: false, guard5: 80, guard7: 80, cats: {} })
   const s = m.parseSettings({ on: true, cats: { video: { model: 'bad model;x', budget: -5, maxTurns: 999 }, other: {}, bogus: {} } })
   assert.equal(s.on, true)
   assert.deepEqual(Object.keys(s.cats), ['video'])
@@ -155,8 +155,25 @@ test('기본값은 빠듯하다: 한 번 실행(약 6만)의 서너 배를 넘�
   }
 })
 
-test('사용량 보호 설정: 정해진 값만, 아니면 80', () => {
-  assert.equal(m.parseSettings({ guard: 60 }).guard, 60)
-  for (const bad of [0, 100, '80', null, 75]) assert.equal(m.parseSettings({ guard: bad }).guard, 80)
+test('사용량 보호 설정: 5시간과 주간을 따로, 정해진 값만, 둘 다 끌 수는 없다', () => {
+  const s = m.parseSettings({ guard5: 60, guard7: 0 })
+  assert.deepEqual([s.guard5, s.guard7], [60, 0])
+  for (const bad of [100, '80', null, 75]) {
+    assert.deepEqual([m.parseSettings({ guard5: bad }).guard5, m.parseSettings({ guard7: bad }).guard7], [80, 80])
+  }
+  const both = m.parseSettings({ guard5: 0, guard7: 0 })
+  assert.deepEqual([both.guard5, both.guard7], [80, 0])
   assert.ok(m.MAX_SPAWNS_PER_PROMPT >= 1 && m.MAX_SPAWNS_PER_PROMPT <= 6)
+})
+
+test('예전 설정(guard 하나)은 두 기준에 같은 값으로 옮긴다', () => {
+  const s = m.parseSettings({ on: true, guard: 60 })
+  assert.deepEqual([s.guard5, s.guard7], [60, 60])
+})
+
+test('nextGuard: 한쪽이 꺼져 있으면 다른 쪽은 끌 수 없다', () => {
+  assert.equal(m.nextGuard(90, 80), 0)
+  assert.equal(m.nextGuard(90, 0), 50)
+  assert.equal(m.nextGuard(0, 80), 50)
+  assert.equal(m.nextGuard(80, 80), 90)
 })
