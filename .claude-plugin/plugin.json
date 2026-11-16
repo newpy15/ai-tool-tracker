@@ -1,0 +1,20 @@
+{
+  "name": "ai-tool-tracker",
+  "version": "0.3.0",
+  "description": "A side panel for Claude Code that shows which plugins, skills and MCP tools you use while you work, what each one is for, and suggests tools for what you are trying to build. 작업 중 쓰인 플러그인·스킬을 실시간으로 보여주고, 필요한 도구를 찾아 추천해 주는 패널.",
+  "author": { "name": "newpy15" },
+  "license": "MIT",
+  "repository": "https://github.com/newpy15/ai-tool-tracker",
+  "homepage": "https://github.com/newpy15/ai-tool-tracker",
+  "keywords": ["claude-code-plugin", "claude-skills", "plugin-finder", "dashboard", "beginners"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language / 언어",
+      "description": "Language for tool descriptions in the panel. Non-English/Korean choices are translated once by the session's model and cached.",
+      "default": "ko",
+      "options": ["ko", "en", "ja", "zh", "es", "fr", "de"]
+    }
+  }
+}

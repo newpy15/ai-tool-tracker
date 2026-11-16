@@ -1,0 +1,12 @@
+{
+  "name": "ai-tool-tracker",
+  "owner": { "name": "newpy15" },
+  "description": "ai-tool-tracker: a Claude Code panel for seeing and finding plugins and skills.",
+  "plugins": [
+    {
+      "name": "ai-tool-tracker",
+      "source": "./",
+      "description": "Live panel of the plugins, skills and MCP tools used while you work, with suggestions for what to use next."
+    }
+  ]
+}
