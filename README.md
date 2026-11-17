@@ -293,7 +293,6 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 
 ## Known limitations
 
-- **Only tried on Windows.** macOS and Linux have not been considered or tested (see the note at the top). Reports are welcome.
 
 - **Only checked on the Claude Code desktop app on Windows.** I have not checked Mac, Linux, the terminal or VS Code. The code has Mac and Linux branches but I have never run them.
 - It is for Claude Code only. Tools you use outside Claude Code cannot be detected automatically, so record them by hand with `/ai-log` if you need to.
