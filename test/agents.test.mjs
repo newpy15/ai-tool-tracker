@@ -183,3 +183,101 @@ test('GUARDS: 0(쓰지 않음)과 10~100을 10단위로', () => {
   assert.deepEqual(m.GUARDS, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
   assert.equal(m.parseSettings({ guard5: 100, guard7: 10 }).guard5, 100)
 })
+
+// ---- 회사 모드 ----
+const dept = (id, name, extra = {}) => ({ id, name, role: '', names: [], cfg: m.defaultDeptCfg(), ...extra })
+const co = (id, name, depts = []) => ({ id, name, depts })
+
+test('parseCompanies: 모양이 이상한 것은 버리고, 길이와 개수를 제한한다', () => {
+  const raw = {
+    active: 'c1',
+    list: [
+      co('c1', '회사', [dept('d1', '디자인팀', { role: '로고\n만들기', names: ['a', 'bad name', 'a'] }), dept('d1', '중복'), dept('D2', '대문자'), dept('d3', '  ')]),
+      co('c1', '중복 회사'),
+      co('C!', '나쁜 id'),
+      co('c2', '   '),
+      null,
+    ],
+  }
+  const r = m.parseCompanies(raw)
+  assert.equal(r.list.length, 1)
+  assert.equal(r.active, 'c1')
+  assert.equal(r.list[0].depts.length, 1)
+  assert.deepEqual(r.list[0].depts[0].names, ['a'])
+  assert.equal(r.list[0].depts[0].role, '로고 만들기')
+  assert.deepEqual(m.parseCompanies('x'), m.EMPTY_COMPANIES)
+  assert.equal(m.parseCompanies({ active: 'nope', list: [co('c1', 'a')] }).active, '')
+})
+
+test('parseCompanies: 부서 설정은 모델별 범위로 바로잡는다', () => {
+  const bad = dept('d1', '팀', { cfg: { model: 'x y', budget: 5, maxTurns: 9999 } })
+  assert.deepEqual(m.parseCompanies({ list: [co('c1', 'a', [bad])] }).list[0].depts[0].cfg, m.defaultDeptCfg())
+  const ok = dept('d1', '팀', { cfg: { model: 'opus', budget: 400_000, maxTurns: 20 } })
+  assert.deepEqual(m.parseCompanies({ list: [co('c1', 'a', [ok])] }).list[0].depts[0].cfg, { model: 'opus', budget: 400_000, maxTurns: 20 })
+})
+
+test('부서 개수·회사 개수 제한', () => {
+  const many = Array.from({ length: 20 }, (_, i) => dept(`d${i}`, `팀${i}`))
+  assert.equal(m.parseCompanies({ list: [co('c1', 'a', many)] }).list[0].depts.length, m.MAX_DEPTS)
+  const cos = Array.from({ length: 6 }, (_, i) => co(`c${i}`, `회사${i}`))
+  assert.equal(m.parseCompanies({ list: cos }).list.length, m.MAX_COMPANIES)
+})
+
+test('deptOfType / keyOfType: 부서와 묶음을 구분하고 남의 것은 거절', () => {
+  assert.equal(m.deptOfType('ai-tool-tracker:co-d1'), 'd1')
+  assert.equal(m.deptOfType('ai-tool-tracker:video'), undefined)
+  assert.equal(m.deptOfType('other:co-d1'), undefined)
+  assert.equal(m.deptOfType('ai-tool-tracker:co-D!'), undefined)
+  assert.equal(m.keyOfType('ai-tool-tracker:co-d1'), 'co-d1')
+  assert.equal(m.keyOfType('ai-tool-tracker:video'), 'video')
+  assert.equal(m.keyOfType('Explore'), undefined)
+})
+
+test('buildDeptSpec: 역할은 정리한 글만, 안전하지 않은 플러그인 이름과 이상한 글자는 넣지 않는다', () => {
+  const d = dept('d1', '법무"팀<x>', { role: '계약서 검토', names: ['remotion', 'bad name; rm -rf /'] })
+  const spec = m.buildDeptSpec(d, '회사\n이름')
+  assert.equal(spec.name, 'co-d1')
+  assert.ok(!/[<>"\n]/.test(spec.description.replace(/"/g, '')))
+  assert.ok(spec.description.includes('remotion'))
+  assert.ok(!spec.prompt.includes('rm -rf'))
+  assert.ok(spec.prompt.includes('계약서 검토'))
+  assert.equal(spec.model, 'haiku')
+  assert.equal(spec.maxTurns, m.defaultDeptCfg().maxTurns)
+})
+
+test('회사 편집: 추가·이름·삭제·활성화는 불변으로, 잘못된 입력은 무시', () => {
+  let st = m.EMPTY_COMPANIES
+  st = m.addCompany(st, co('c1', ' 우리 회사 '))
+  assert.equal(st.list[0].name, '우리 회사')
+  assert.equal(m.addCompany(st, co('c1', '중복')), st)
+  assert.equal(m.setActive(st, 'nope'), st)
+  st = m.setActive(st, 'c1')
+  assert.equal(st.active, 'c1')
+  st = m.addDept(st, 'c1', dept('d1', '디자인팀'))
+  st = m.addDept(st, 'c1', dept('d2', '기획팀'))
+  assert.equal(m.addDept(st, 'c1', dept('d1', '중복')).list[0].depts.length, 2)
+  st = m.renameCompany(st, 'c1', '새 이름')
+  assert.equal(st.list[0].name, '새 이름')
+  assert.equal(m.renameCompany(st, 'c1', '  '), st)
+  st = m.updateDept(st, 'c1', 'd1', { role: '로고', cfg: { model: 'sonnet', budget: 300_000, maxTurns: 12 } })
+  assert.equal(st.list[0].depts[0].role, '로고')
+  assert.equal(st.list[0].depts[0].cfg.model, 'sonnet')
+  st = m.toggleDeptMember(st, 'c1', 'd1', 'remotion')
+  st = m.toggleDeptMember(st, 'c1', 'd1', 'bad name')
+  assert.deepEqual(st.list[0].depts[0].names, ['remotion'])
+  assert.deepEqual(m.companyPluginNames(st.list[0]), ['remotion'])
+  st = m.deleteDept(st, 'c1', 'd2')
+  assert.equal(st.list[0].depts.length, 1)
+  st = m.deleteCompany(st, 'c1')
+  assert.deepEqual(st, { active: '', list: [] })
+})
+
+test('listCostTokens: 설명이 길수록 크다', () => {
+  assert.ok(m.listCostTokens({ name: 'a', description: 'x'.repeat(350) }) > m.listCostTokens({ name: 'a', description: 'x' }))
+})
+
+test('COMPANY_TEMPLATE: 묶음 이름이 실제 묶음이고 부서 키가 겹치지 않는다', () => {
+  for (const d of m.COMPANY_TEMPLATE) for (const c of d.cats) assert.ok(m.AGENT_CATS.includes(c), c)
+  assert.equal(new Set(m.COMPANY_TEMPLATE.map(d => d.key)).size, m.COMPANY_TEMPLATE.length)
+  assert.ok(m.COMPANY_TEMPLATE.length <= m.MAX_DEPTS)
+})

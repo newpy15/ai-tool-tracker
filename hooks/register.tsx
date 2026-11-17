@@ -12,8 +12,11 @@ import type { CatKey } from './categories'
 import {
   addUsage, AGENT_CATS, buildSpec, MAX_SPAWNS_PER_PROMPT, nextGuard, catOfType, cfgOf, cycle, DEFAULT_SETTINGS, fmtTokens, isOver, MODEL_PRESETS,
   modelLabel, changeModel, fit, limitsOf, parseModel, parseSettings, parseTokens, parseTurns, PLUGIN_ID, tokensOf,
+  activeCompany, addCompany, addDept, buildDeptSpec, cleanText, COMPANY_TEMPLATE, companyPluginNames, defaultDeptCfg,
+  deleteCompany, deleteDept, deptOfType, EMPTY_COMPANIES, keyOfType, listCostTokens, MAX_COMPANIES, MAX_DEPTS, newCompanyId,
+  newDeptId, parseCompanies, renameCompany, setActive, toggleDeptMember, updateDept,
 } from './agents'
-import type { AgentSettings, AgentUse } from './agents'
+import type { AgentSettings, AgentUse, Company, CompanyState, Dept } from './agents'
 import { attribute, bar, levelColor, levelOf, overGuard, pct, pickWindow, shouldWarn, untilReset } from './usage'
 import type { Level } from './usage'
 import { DAY_OPTIONS, DEFAULT_DAYS, emptyHistory, merge, parseHistory, record, unusedList } from './history'
@@ -241,6 +244,45 @@ const UI = {
     agGuardOff: '쓰지 않음',
     agGuardHint: '5시간과 주간(7일) 기준을 따로 고릅니다. 그 사용량이 정한 퍼센트 이상이면 새 하위 에이전트를 시작하지 않습니다. 둘 다 끌 수는 없습니다.',
     tabMode: '작업 모드',
+    coTitle: '회사 모드',
+    coHint: '회사를 만들고 부서(디자인팀, 기획팀, 보안, 법무 …)마다 전용 하위 에이전트와 모델·토큰 한도를 정합니다. 회사를 켜면 그 부서들이 하위 에이전트로 바로 만들어지고, 맡길 일이 나오면 해당 부서가 맡습니다.',
+    coNewLabel: '새 회사 이름:',
+    coNewHint: '기본 부서 8개로 만듭니다 (Enter)',
+    coEmpty: '아직 회사가 없습니다. 아래에 이름을 쓰면 기본 부서(디자인, 기획, 개발, 보안, 법무, 총무, 사무, 서비스)가 있는 회사가 만들어지고, 부서는 마음대로 고칠 수 있습니다.',
+    coFull: (n: number) => `회사는 ${n}개까지 만들 수 있습니다. 안 쓰는 것을 지운 뒤 만드세요.`,
+    coDepts: (n: number) => `부서 ${n}개`,
+    coTurnOn: '회사 켜기',
+    coTurnOff: '회사 끄기',
+    coEditDepts: '부서 편집',
+    coApplyPlugins: '이 회사에 필요한 플러그인만 켜기',
+    coDelAsk: (name: string) => `"${name}" 회사를 지울까요? 부서 설정도 함께 지워지지만 플러그인 자체는 지워지지 않습니다.`,
+    coCost: (n: number, t: string) => `켜 두는 동안 부서 ${n}개가 매 턴 에이전트 목록에 약 ${t} 토큰을 더 씁니다.`,
+    coInactive: '이 부서가 속한 회사가 꺼져 있어 하위 에이전트를 시작하지 않았습니다. 작업 모드 탭에서 회사를 켜세요.',
+    coDeptName: '부서 이름:',
+    coDeptRole: '역할:',
+    coMembers: '맡길 플러그인 (눌러서 넣고 뺍니다)',
+    coNoMembers: '플러그인 없음 (역할만 하는 부서)',
+    coAddDept: '새 부서 이름:',
+    coDeptFull: (n: number) => `부서는 ${n}개까지 만들 수 있습니다.`,
+    coOpen: '펼치기',
+    coClose: '접기',
+    coNote: '부서는 이 세션 안의 하위 에이전트이며 사이드바에 따로 뜨는 새 세션은 아닙니다. 사용량 보호와 한 번에 시작하는 개수 제한이 그대로 적용됩니다.',
+    dp_design: '디자인팀',
+    dp_planning: '기획팀',
+    dp_dev: '개발팀',
+    dp_security: '보안팀',
+    dp_legal: '법무팀',
+    dp_general: '총무팀',
+    dp_office: '사무팀',
+    dp_service: '서비스팀',
+    dr_design: '이미지, 영상, 자막 같은 시각 결과물을 만든다',
+    dr_planning: '기획안, 일정, 문서 구조를 정리한다',
+    dr_dev: '코드와 웹 화면을 만들고 고친다',
+    dr_security: '보안 위험과 취약점을 점검한다',
+    dr_legal: '계약서와 약관의 위험한 조항을 검토하고 쉬운 말로 설명한다 (법률 자문은 아니다)',
+    dr_general: '일정, 비품, 행정 문서 같은 총무 업무를 정리한다',
+    dr_office: '문서와 파일을 정리하고 저장한다',
+    dr_service: '고객 응대 문구, 마케팅 글, 데이터 요약을 만든다',
     prTitle: '작업 모드',
     prHint: '지금 하려는 일에 맞는 플러그인만 켜고 나머지는 끕니다. 누르면 먼저 무엇이 바뀌는지 보여 주고 확인을 받습니다.',
     prBuiltin: '기본 모드',
@@ -482,6 +524,45 @@ const UI = {
     agGuardOff: 'not used',
     agGuardHint: 'Choose the 5-hour and the weekly (7-day) thresholds separately. No new sub-agent is started when that usage is at or above its percentage. You cannot turn both off.',
     tabMode: 'Work modes',
+    coTitle: 'Company mode',
+    coHint: 'Make a company and give each department (design, planning, security, legal ...) its own sub-agent with its own model and token budget. Turn the company on and its departments become sub-agents right away; the matching department takes the work.',
+    coNewLabel: 'New company name:',
+    coNewHint: 'made with 8 default departments (Enter)',
+    coEmpty: 'No company yet. Type a name below to make one with default departments (design, planning, dev, security, legal, general affairs, office, service). You can change them freely.',
+    coFull: (n: number) => `You can have up to ${n} companies. Delete one you do not use first.`,
+    coDepts: (n: number) => `${n} departments`,
+    coTurnOn: 'Turn company on',
+    coTurnOff: 'Turn company off',
+    coEditDepts: 'Edit departments',
+    coApplyPlugins: 'Turn on only the plugins this company needs',
+    coDelAsk: (name: string) => `Delete the company "${name}"? Its department settings go too; the plugins themselves are not deleted.`,
+    coCost: (n: number, t: string) => `While on, ${n} departments add about ${t} tokens to the agent list every turn.`,
+    coInactive: 'The company of this department is off, so no sub-agent was started. Turn the company on in the Work modes tab.',
+    coDeptName: 'Department name:',
+    coDeptRole: 'Role:',
+    coMembers: 'Plugins it may use (press to add or remove)',
+    coNoMembers: 'No plugins (a role-only department)',
+    coAddDept: 'New department name:',
+    coDeptFull: (n: number) => `You can have up to ${n} departments.`,
+    coOpen: 'Open',
+    coClose: 'Close',
+    coNote: 'Departments are sub-agents inside this session, not separate sessions in the sidebar. Usage protection and the per-request limit apply as usual.',
+    dp_design: 'Design team',
+    dp_planning: 'Planning team',
+    dp_dev: 'Dev team',
+    dp_security: 'Security team',
+    dp_legal: 'Legal team',
+    dp_general: 'General affairs',
+    dp_office: 'Office team',
+    dp_service: 'Service team',
+    dr_design: 'Makes visual results such as images, video and captions',
+    dr_planning: 'Organizes plans, schedules and document structure',
+    dr_dev: 'Builds and fixes code and web screens',
+    dr_security: 'Checks for security risks and vulnerabilities',
+    dr_legal: 'Reviews risky clauses in contracts and terms and explains them plainly (not legal advice)',
+    dr_general: 'Handles general-affairs work such as schedules, supplies and admin documents',
+    dr_office: 'Organizes and stores documents and files',
+    dr_service: 'Writes customer-facing text, marketing copy and data summaries',
     prTitle: 'Work modes',
     prHint: 'Turns on only the plugins that fit what you are about to do and turns the rest off. It shows what will change and asks first.',
     prBuiltin: 'Built-in modes',
@@ -1832,7 +1913,8 @@ const setUnusedDays = async ($: any, n: number) => {
 // 3-2) 용도별 하위 에이전트 (분업)
 // ---------------------------------------------------------------------------
 let agentSet: AgentSettings = DEFAULT_SETTINGS // 훅이 읽는 현재 설정 (화면은 같은 값을 atom에서 읽는다)
-const agentOf = new Map<string, CatKey>() // 하위 에이전트 id -> 묶음 (사용량을 묶음에 더하려고)
+const agentOf = new Map<string, string>() // 하위 에이전트 id -> 묶음 이름 또는 co-<부서 id> (사용량을 더하려고)
+let companies: CompanyState = EMPTY_COMPANIES // 회사 모드: 회사들과 켜 둔 회사
 let spawnCount = 0 // 이번 요청(프롬프트)에서 시작한 하위 에이전트 수
 // 플러그인별 "미리 차지하는 토큰" 측정값(근사치). 자주 읽지 않게 잠깐 보관한다
 type CostMap = { at: number; plugins: Record<string, { skills: number; agents: number; mcp: number; total: number }>; skills: Record<string, number> }
@@ -1844,19 +1926,32 @@ const membersOf = (idx: Index, cat: CatKey) =>
 
 /** 켜져 있으면 묶음마다 에이전트 종류를 등록한다. 이름이 같으면 바뀐 설정으로 덮어쓴다 */
 const syncAgents = async ($: any) => {
-  if (!agentSet.on) return
   const idx = await ensure($)
-  for (const cat of AGENT_CATS) {
-    const members = membersOf(idx, cat)
-    if (members.length === 0) continue
-    const spec = buildSpec(cat, String(ui()[`catg_${cat}`] ?? cat), members, cfgOf(agentSet, cat))
-    await safe($.agent.register(spec))
+  if (agentSet.on) {
+    for (const cat of AGENT_CATS) {
+      const members = membersOf(idx, cat)
+      if (members.length === 0) continue
+      const spec = buildSpec(cat, String(ui()[`catg_${cat}`] ?? cat), members, cfgOf(agentSet, cat))
+      await safe($.agent.register(spec))
+    }
   }
+  // 켜 둔 회사의 부서마다 에이전트를 등록한다 (회사 모드는 분업 스위치와 따로 켠다)
+  const co = activeCompany(companies)
+  if (co) for (const d of co.depts) await safe($.agent.register(buildDeptSpec(d, co.name)))
 }
 
 const loadAgents = async ($: any) => {
   agentSet = parseSettings(await safe($.store.get('agent-settings')))
   await update($, agentCfgState, () => agentSet)
+  companies = parseCompanies(await safe($.store.get('companies-v1')))
+  await syncAgents($)
+}
+
+/** 회사 설정을 바꾸고 저장한 뒤 화면을 다시 그리고 에이전트를 다시 등록한다 */
+const saveCompanies = async ($: any, next: CompanyState) => {
+  companies = next
+  await safe($.store.set('companies-v1', companies))
+  await setMove($, '__co', String(Date.now()))
   await syncAgents($)
 }
 
@@ -1993,24 +2088,30 @@ export const register: Register = (on, options) => {
 
   // 분업: 우리 에이전트 종류만 다룬다. 설정이 꺼져 있으면 모델에게 보이지 않게 한다.
   on('agent.offer', async ($, e, next) => {
+    const dId = deptOfType(e.agent)
+    if (dId !== undefined) return { isOffered: !!activeCompany(companies)?.depts.some(d => d.id === dId) }
     if (catOfType(e.agent) === undefined) return next(e)
     return { isOffered: agentSet.on }
   }).catch(($, e, next) => next(e))
 
   // 새 하위 에이전트를 시작하기 전에 토큰 한도를 확인하고, 시작되면 어느 묶음의 것인지 기억한다
   on('agent.spawn', async ($, e, next) => {
-    const cat = catOfType(e.subagentType)
+    const cat = keyOfType(e.subagentType) // 용도 묶음 이름 또는 co-<부서 id>
     if (cat === undefined) return next(e)
+    const dId = deptOfType(e.subagentType)
+    const co = activeCompany(companies)
+    const dept = dId !== undefined ? co?.depts.find(d => d.id === dId) : undefined
+    if (dId !== undefined && !dept) return { deny: ui().coInactive }
     // 1) 사용량 보호: 5시간·7일 중 하나라도 기준을 넘었으면 새 하위 에이전트를 시작하지 않는다
     const lim = await safe($.session.usage())
     const hit = overGuard(lim?.rateLimits, agentSet.guard5, agentSet.guard7)
     if (hit) return { deny: ui().guardDeny(hit.kind === 'five_hour' ? ui().usFive : ui().usSeven, Math.round(hit.percent), hit.guard) }
     // 2) 한 요청에서 한꺼번에 너무 많이 띄우지 못하게 한다
     if (spawnCount >= MAX_SPAWNS_PER_PROMPT) return { deny: ui().spawnCap(MAX_SPAWNS_PER_PROMPT) }
-    const cfg = cfgOf(agentSet, cat)
+    const cfg = dept ? dept.cfg : cfgOf(agentSet, cat as CatKey)
     const used = (await read($, agentUseState))[cat]?.tokens ?? 0
     if (isOver(used, cfg.budget)) {
-      const label = String(ui()[`catg_${cat}`] ?? cat)
+      const label = dept ? dept.name : String(ui()[`catg_${cat}`] ?? cat)
       return { deny: ui().agOver(label, fmtTokens(used), fmtTokens(cfg.budget)) }
     }
     const started = await next(e)
@@ -2572,8 +2673,240 @@ export const register: Register = (on, options) => {
         )
       }
 
+      // ---- 회사 모드
+      const modelText2 = (m: string) => (m === 'inherit' ? ui().agInherit : modelLabel(m))
+      const coPatch = (c: Company, d: Dept, patch: Partial<Omit<Dept, 'id'>>) => void saveCompanies($, updateDept(companies, c.id, d.id, patch))
+      const deptEditor = (c: Company, d: Dept) => {
+        const lim = limitsOf(d.cfg.model)
+        const groups = CATEGORY_ORDER.map(cat => ({ cat, list: pool.filter(i => i.cat === cat && canToggleItem(i)) })).filter(g => g.list.length > 0)
+        return (
+          <Box flexDirection="column" paddingLeft={2}>
+            <Input
+              key={`dn-${d.id}`}
+              label={`${ui().coDeptName} `}
+              value={d.name}
+              onSubmit={(v: string) => (cleanText(v, 30) ? coPatch(c, d, { name: v }) : $.ui.toast(ui().agBad))}
+            />
+            <Input
+              key={`dr-${d.id}`}
+              label={`${ui().coDeptRole} `}
+              value={d.role}
+              onSubmit={(v: string) => coPatch(c, d, { role: v })}
+            />
+            <Box gap={1}>
+              <Text dimColor>{ui().agModel}:</Text>
+              <Button
+                key={`dm-${d.id}`}
+                label={modelText2(d.cfg.model)}
+                onPress={() => coPatch(c, d, { cfg: changeModel(d.cfg, cycle(MODEL_PRESETS, d.cfg.model)) })}
+              />
+            </Box>
+            <Input
+              key={`dmi-${d.id}`}
+              label={`${ui().agModelCustom} `}
+              placeholder="claude-opus-5-5"
+              value={MODEL_PRESETS.includes(d.cfg.model) ? '' : d.cfg.model}
+              onSubmit={(v: string) => {
+                const m = parseModel(v)
+                if (m) coPatch(c, d, { cfg: changeModel(d.cfg, m) })
+                else if (v.trim() === '') coPatch(c, d, { cfg: changeModel(d.cfg, 'inherit') })
+                else $.ui.toast(ui().agBad)
+              }}
+            />
+            <Input
+              key={`db-${d.id}`}
+              label={`${ui().agBudget} `}
+              placeholder={ui().agRange(fmtTokens(lim.budget.min), fmtTokens(lim.budget.max))}
+              value={String(d.cfg.budget)}
+              onSubmit={(v: string) => {
+                const n = parseTokens(v)
+                if (n === undefined) return void $.ui.toast(ui().agBad)
+                const f = fit(n, lim.budget)
+                coPatch(c, d, { cfg: { ...d.cfg, budget: f.value } })
+                if (f.adjusted) $.ui.toast(ui().agAdjusted(fmtTokens(lim.budget.min), fmtTokens(lim.budget.max), fmtTokens(f.value)))
+              }}
+            />
+            <Input
+              key={`dt-${d.id}`}
+              label={`${ui().agTurns} `}
+              placeholder={ui().agRange(String(lim.turns.min), String(lim.turns.max))}
+              value={String(d.cfg.maxTurns)}
+              onSubmit={(v: string) => {
+                const n = parseTurns(v)
+                if (n === undefined) return void $.ui.toast(ui().agBad)
+                const f = fit(n, lim.turns)
+                coPatch(c, d, { cfg: { ...d.cfg, maxTurns: f.value } })
+                if (f.adjusted) $.ui.toast(ui().agAdjusted(String(lim.turns.min), String(lim.turns.max), String(f.value)))
+              }}
+            />
+            <Text bold>{ui().coMembers}</Text>
+            {groups.map(g => (
+              <Box flexDirection="column" paddingLeft={1}>
+                <Text dimColor>{ui()[`catg_${g.cat}`] ?? g.cat}</Text>
+                <Box gap={1}>
+                  {g.list.map(i => (
+                    <Button
+                      key={`dp-${d.id}-${i.name}`}
+                      label={`${d.names.includes(i.name) ? '✓' : '○'} ${i.name}`}
+                      variant={d.names.includes(i.name) ? 'primary' : undefined}
+                      onPress={() => void saveCompanies($, toggleDeptMember(companies, c.id, d.id, i.name))}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            ))}
+            <Box marginTop={1}>
+              <Button
+                key={`ddel-${d.id}`}
+                label={ui().prDelete}
+                onPress={() => {
+                  void setMove($, 'co:dept', 'idle')
+                  void saveCompanies($, deleteDept(companies, c.id, d.id))
+                }}
+              />
+            </Box>
+          </Box>
+        )
+      }
+      const coRow = (c: Company) => {
+        const isActive = companies.active === c.id
+        const editing = mv('co:edit') === c.id
+        const renaming = mv('co:ren') === c.id
+        const deleting = mv(`co:del:${c.id}`) === 'confirm'
+        const union = companyPluginNames(c)
+        const applyRow: Row = { id: `co-${c.id}`, label: c.name, plan: planByNames(planItems, union) }
+        const applying = mv(`preset:co-${c.id}`) !== 'idle'
+        const costTok = c.depts.reduce((n, d) => n + listCostTokens(buildDeptSpec(d, c.name)), 0)
+        const idle = !renaming && !deleting && !applying
+        return (
+          <Box flexDirection="column" marginTop={1}>
+            <Box gap={1}>
+              <Text backgroundColor={isActive ? 'success' : 'error'} color="inverseText" bold>
+                {` ${isActive ? ui().on : ui().off} `}
+              </Text>
+              <Text bold>{c.name}</Text>
+              <Text dimColor>({ui().coDepts(c.depts.length)})</Text>
+            </Box>
+            {isActive && <Text dimColor>  {ui().coCost(c.depts.length, fmtTokens(costTok))}</Text>}
+            {idle && (
+              <Box gap={1} paddingLeft={2}>
+                <Button
+                  key={`cot-${c.id}`}
+                  label={isActive ? ui().coTurnOff : ui().coTurnOn}
+                  onPress={() => void saveCompanies($, setActive(companies, isActive ? '' : c.id))}
+                />
+                <Button key={`coe-${c.id}`} label={ui().coEditDepts} onPress={() => setMove($, 'co:edit', editing ? 'idle' : c.id)} />
+                <Button key={`cor-${c.id}`} label={ui().prRename} onPress={() => setMove($, 'co:ren', c.id)} />
+                <Button key={`cod-${c.id}`} label={ui().prDelete} onPress={() => setMove($, `co:del:${c.id}`, 'confirm')} />
+              </Box>
+            )}
+            {idle && union.length > 0 && (
+              <Box paddingLeft={2}>
+                <Button
+                  key={`cop-${c.id}`}
+                  label={ui().coApplyPlugins}
+                  onPress={() => (isEmptyPlan(applyRow.plan) ? $.ui.toast(ui().prNothing) : void setMove($, `preset:co-${c.id}`, 'confirm'))}
+                />
+              </Box>
+            )}
+            {applyStatus(applyRow)}
+            {renaming && (
+              <Box paddingLeft={2}>
+                <Input
+                  key={`corn-${c.id}`}
+                  label={`${ui().prNameLabel} `}
+                  value={c.name}
+                  onSubmit={(v: string) => {
+                    if (cleanText(v, 30) === '') $.ui.toast(ui().agBad)
+                    else void saveCompanies($, renameCompany(companies, c.id, v))
+                    void setMove($, 'co:ren', 'idle')
+                  }}
+                />
+              </Box>
+            )}
+            {deleting && (
+              <Box flexDirection="column" paddingLeft={2}>
+                <Text>{ui().coDelAsk(c.name)}</Text>
+                <Box gap={1}>
+                  <Button
+                    key={`cody-${c.id}`}
+                    label={ui().yes}
+                    onPress={() => {
+                      void setMove($, `co:del:${c.id}`, 'idle')
+                      void saveCompanies($, deleteCompany(companies, c.id))
+                    }}
+                  />
+                  <Button key={`codn-${c.id}`} label={ui().cancel} onPress={() => setMove($, `co:del:${c.id}`, 'idle')} />
+                </Box>
+              </Box>
+            )}
+            {editing &&
+              c.depts.map(d => {
+                const open = mv('co:dept') === d.id
+                return (
+                  <Box flexDirection="column" paddingLeft={2} marginTop={1}>
+                    <Box gap={1}>
+                      <Button key={`cdo-${d.id}`} label={`${open ? '▾' : '▸'} ${d.name}`} onPress={() => setMove($, 'co:dept', open ? 'idle' : d.id)} />
+                      <Text dimColor>
+                        {modelText2(d.cfg.model)} · {fmtTokens(d.cfg.budget)} · {d.cfg.maxTurns} · {d.names.length > 0 ? ui().prCount(d.names.length) : ui().coNoMembers}
+                      </Text>
+                    </Box>
+                    {(agUse[`co-${d.id}`]?.runs ?? 0) > 0 && (
+                      <Text dimColor>  {ui().agUsed(agUse[`co-${d.id}`]?.runs ?? 0, fmtTokens(agUse[`co-${d.id}`]?.tokens ?? 0))}</Text>
+                    )}
+                    {open && deptEditor(c, d)}
+                  </Box>
+                )
+              })}
+            {editing && (
+              <Box paddingLeft={2} marginTop={1}>
+                {c.depts.length < MAX_DEPTS ? (
+                  <Input
+                    key={`cadd-${c.id}`}
+                    label={`${ui().coAddDept} `}
+                    onSubmit={(v: string) => {
+                      const next = addDept(companies, c.id, { id: newDeptId(c, Date.now()), name: v, role: '', names: [], cfg: defaultDeptCfg() })
+                      if (next === companies) $.ui.toast(ui().agBad)
+                      else void saveCompanies($, next)
+                    }}
+                  />
+                ) : (
+                  <Text dimColor>{ui().coDeptFull(MAX_DEPTS)}</Text>
+                )}
+              </Box>
+            )}
+          </Box>
+        )
+      }
+      const makeCompany = (name: string) => {
+        const id = newCompanyId(companies, Date.now())
+        const depts: Dept[] = COMPANY_TEMPLATE.map(t => ({
+          id: t.key,
+          name: String(ui()[`dp_${t.key}`] ?? t.key),
+          role: String(ui()[`dr_${t.key}`] ?? ''),
+          names: planItems.filter(i => i.toggleable && t.cats.includes(i.cat)).map(i => i.name).slice(0, 40),
+          cfg: defaultDeptCfg(),
+        }))
+        const next = addCompany(companies, { id, name, depts })
+        if (next === companies) $.ui.toast(ui().agBad)
+        else void saveCompanies($, next)
+      }
+
       return (
         <Box flexDirection="column">
+          <Text bold>{ui().coTitle}</Text>
+          <Text dimColor>{ui().coHint}</Text>
+          {companies.list.length === 0 && <Text dimColor>{ui().coEmpty}</Text>}
+          {companies.list.map(coRow)}
+          <Box marginTop={1}>
+            {companies.list.length < MAX_COMPANIES ? (
+              <Input key="conew" label={`${ui().coNewLabel} `} placeholder={ui().coNewHint} onSubmit={(v: string) => makeCompany(v)} />
+            ) : (
+              <Text dimColor>{ui().coFull(MAX_COMPANIES)}</Text>
+            )}
+          </Box>
+          <Text dimColor>{ui().coNote}</Text>
+          <Text> </Text>
           <Text bold>{ui().prTitle}</Text>
           <Text dimColor>{ui().prHint}</Text>
           <Text bold> </Text>
