@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   clean, safeName, safeRepo, repoFromUrl, githubLink, ownerOf,
-  tierFromReview, tierRank, githubFlags, rankRecos, isLowStars, mergeRecos, relevance, termHit,
+  tierFromReview, tierRank, githubFlags, rankRecos, isLowStars, mergeRecos, relevance, termHit, safeRelPath,
 } from '../hooks/trust.ts'
 
 test('safeName: 명령에 쓸 수 있는 이름만 통과', () => {
@@ -209,4 +209,14 @@ test('relevance: 짧은 검색어(ui)가 guide 같은 낱말 속에서 맞지 �
   assert.equal(relevance('GUIDE Instructional Design', 'Teaching guide', ['ui']), 0)
   assert.equal(relevance('ui-kit', 'Components', ['ui']), 3)
   assert.equal(relevance('frontend-design', 'Frontend design skill for UI/UX implementation', ['design', 'figma', 'ui']), 3)
+})
+
+test('safeRelPath: 플러그인 폴더 안의 안전한 상대 경로만', () => {
+  assert.equal(safeRelPath('./.claude/skills/'), '.claude/skills')
+  assert.equal(safeRelPath('./skills'), 'skills')
+  assert.equal(safeRelPath('agents/reviewer.md'), 'agents/reviewer.md')
+  assert.equal(safeRelPath('./a b/c-d_e.f'), 'a b/c-d_e.f')
+  for (const bad of ['../x', './a/../../b', '/etc/passwd', 'C:/x', 'C:\\x', '~/x', 'a\\b', '', '.', './', '..', 'a/./..', 'a/b:c', 'a*b', 'x'.repeat(200), 'a/b/c/d/e/f/g/h/i', null, 5, undefined, ['a']]) {
+    assert.equal(safeRelPath(bad), '', String(bad))
+  }
 })

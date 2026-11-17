@@ -19,6 +19,9 @@
 > [!IMPORTANT]
 > The official source is [newpy15/ai-tool-tracker](https://github.com/newpy15/ai-tool-tracker). A similar repository name or a copied README does not make a download official. Check the owner before you install anything, which is the same advice this plugin gives for every suggestion it shows.
 
+> [!NOTE]
+> **Platform**: so far this plugin has only been built and tried on **Windows** (the Claude desktop app). macOS and Linux were not taken into account and have never been tested. The code has branches for other systems, but they have never been run, and the list of plugins installed in the Claude app is read from a Windows-only location. If something does not work on macOS or Linux, please open an Issue and paste the **Detected environment** text from the Environment tab (hide your user name in any paths).
+
 ---
 
 ## Why I made it
@@ -50,7 +53,7 @@ So I built a panel that "shows what is used and what it costs, lets you switch o
 - **Tokens**: no model is used to scan files. A model is used only for translation and for turning a search word that is not in English into an English one (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (90 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (91 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -289,6 +292,8 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 - The plugin cannot switch itself off.
 
 ## Known limitations
+
+- **Only tried on Windows.** macOS and Linux have not been considered or tested (see the note at the top). Reports are welcome.
 
 - **Only checked on the Claude Code desktop app on Windows.** I have not checked Mac, Linux, the terminal or VS Code. The code has Mac and Linux branches but I have never run them.
 - It is for Claude Code only. Tools you use outside Claude Code cannot be detected automatically, so record them by hand with `/ai-log` if you need to.

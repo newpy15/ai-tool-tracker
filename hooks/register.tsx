@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { RecoGroup, RecoItem, RecoState, Use } from '../types'
 import {
   clean, githubFlags, githubLink, isLowStars, mergeRecos, ownerOf, rankRecos, relevance, repoFromUrl, safeName,
-  safeRepo, termHit, tierBonus, tierFromReview, tierRank,
+  safeRelPath, safeRepo, termHit, tierBonus, tierFromReview, tierRank,
 } from './trust'
 import type { Tier } from './trust'
 import { categorize, CATEGORY_ORDER } from './categories'
@@ -1352,10 +1352,25 @@ const scan = async ($: any): Promise<Index> => {
     return found.filter((x): x is { name: string; dir: string; summary: string; desc: string } => !!x)
   }
 
-  // 플러그인의 스킬: skills/ 아래, 없으면 플러그인 폴더 바로 아래 (구조가 다른 플러그인도 읽는다)
-  const readSkillsAny = async (p: string) => {
-    const a = await readSkills(`${p}/skills`)
-    return a.length > 0 ? a : readSkills(p)
+  // 플러그인의 스킬: 기본은 skills/ 아래이고, plugin.json의 "skills"가 따로 정한 위치(예: ./.claude/skills/)도 읽는다.
+  // 어디서도 못 찾으면 플러그인 폴더 바로 아래를 본다 (구조가 다른 플러그인도 읽는다)
+  const readSkillsAny = async (p: string, extra: string[] = []) => {
+    const out: Awaited<ReturnType<typeof readSkills>> = []
+    const seen = new Set<string>()
+    for (const dir of [`${p}/skills`, ...extra.map(r => `${p}/${r}`)]) {
+      let a = await readSkills(dir)
+      if (a.length === 0) {
+        // 경로가 스킬 폴더 하나를 곧바로 가리킬 수도 있다
+        const t: string | undefined = await safe($.fs.read(`${dir}/SKILL.md`))
+        if (t) {
+          const fm = parseFront(t)
+          const base = dir.split('/').pop() ?? ''
+          a = [{ name: fm.name ?? base, dir: base, summary: summarize(fm.description ?? ''), desc: clean(fm.description ?? '', 300) }]
+        }
+      }
+      for (const s of a) if (!seen.has(s.name)) { seen.add(s.name); out.push(s) }
+    }
+    return out.length > 0 ? out : readSkills(p)
   }
 
   // 사용자가 직접 둔 스킬: 이름 접두어(remotion-…)가 같은 것이 2개 이상이면 한 묶음으로
@@ -1416,24 +1431,40 @@ const scan = async ($: any): Promise<Index> => {
       }
 
       let desc = ''
+      let pjson: any = {}
       for (const f of [`${p}/.claude-plugin/plugin.json`, `${p}/plugin.json`]) {
         const t: string | undefined = await safe($.fs.read(f))
         if (!t) continue
         try {
-          desc = JSON.parse(t).description ?? ''
+          pjson = JSON.parse(t) ?? {}
+          desc = pjson.description ?? ''
         } catch {}
         break
       }
+      // plugin.json이 따로 정한 위치(스킬, 에이전트, MCP 설정 파일). 남이 쓴 글이므로 플러그인 폴더 안의 안전한 경로만 쓴다
+      const asPaths = (v: unknown): string[] =>
+        (Array.isArray(v) ? v : typeof v === 'string' ? [v] : []).map(safeRelPath).filter(Boolean).slice(0, 8)
 
-      const skills = await readSkillsAny(p)
+      const skills = await readSkillsAny(p, asPaths(pjson.skills))
 
-      const agentEntries: any[] = (await safe($.fs.list(`${p}/agents`))) ?? []
-      const agents = agentEntries
-        .filter(a => a.kind === 'file' && a.name.endsWith('.md'))
-        .map(a => a.name.replace(/\.md$/, ''))
+      const agentNames = new Set<string>()
+      for (const rel of [`${p}/agents`, ...asPaths(pjson.agents).map(r => `${p}/${r}`)]) {
+        if (rel.endsWith('.md')) {
+          agentNames.add((rel.split('/').pop() ?? '').replace(/\.md$/, ''))
+          continue
+        }
+        for (const a of ((await safe($.fs.list(rel))) ?? []) as any[]) {
+          if (a.kind === 'file' && a.name.endsWith('.md')) agentNames.add(a.name.replace(/\.md$/, ''))
+        }
+      }
+      const agents = [...agentNames].filter(Boolean)
 
       let mcp: string[] = []
-      for (const f of [`${p}/.mcp.json`, `${p}/mcp.json`]) {
+      if (pjson.mcpServers && typeof pjson.mcpServers === 'object' && !Array.isArray(pjson.mcpServers)) {
+        mcp = Object.keys(pjson.mcpServers).slice(0, 50)
+      }
+      const mcpFiles = mcp.length > 0 ? [] : [`${p}/.mcp.json`, `${p}/mcp.json`, ...asPaths(typeof pjson.mcpServers === 'string' ? pjson.mcpServers : '').map(r => `${p}/${r}`)]
+      for (const f of mcpFiles) {
         const t: string | undefined = await safe($.fs.read(f))
         if (!t) continue
         try {

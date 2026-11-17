@@ -32,6 +32,19 @@ export const safeName = (n: unknown): string => {
   return /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(s) ? s : ''
 }
 
+/**
+ * 플러그인 안의 상대 경로("./.claude/skills/")를 안전한 "a/b/c" 꼴로. plugin.json이 정한 경로는 남이 쓴 글이므로
+ * 플러그인 폴더 밖으로 나가거나(.., 절대 경로, 드라이브 글자), 이상한 글자가 있으면 빈 문자열로 거절한다.
+ */
+export const safeRelPath = (p: unknown): string => {
+  const s = typeof p === 'string' ? p.trim() : ''
+  if (!s || s.length > 120 || /[\\:*?"<>|\u0000-\u001f]/.test(s) || s.startsWith('/') || s.startsWith('~')) return ''
+  const segs = s.split('/').filter(x => x !== '' && x !== '.')
+  if (segs.length === 0 || segs.length > 8) return ''
+  if (segs.some(x => /^\.+$/.test(x) || !/^[A-Za-z0-9._ @-]{1,64}$/.test(x))) return ''
+  return segs.join('/')
+}
+
 /** owner/repo: GitHub이 허용하는 글자만, 맨 앞이 '-'면 명령 옵션으로 읽힐 수 있어 거절. 아니면 빈 문자열 */
 export const safeRepo = (r: unknown): string => {
   const s = (typeof r === 'string' ? r : '').replace(/\.git$/i, '')
