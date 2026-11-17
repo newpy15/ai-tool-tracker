@@ -184,6 +184,7 @@ const UI = {
     opened: (n: number) => `AI 도구 현황 패널을 열었습니다. (설치된 항목 ${n}개 읽음)`,
     on: '켜짐',
     off: '꺼짐',
+    subApp: (n: number) => `Claude 앱 (${n})`,
     subPlugins: (n: number) => `플러그인 (${n})`,
     subSkills: (n: number) => `스킬 (${n})`,
     noneHere: '이 구역에는 항목이 없습니다.',
@@ -279,7 +280,7 @@ const UI = {
     agGuardOff: '쓰지 않음',
     agGuardHint: '5시간과 주간(7일) 기준을 따로 고릅니다. 그 사용량이 정한 퍼센트 이상이면 새 하위 에이전트를 시작하지 않습니다. 둘 다 끌 수는 없습니다.',
     appTitle: (n: number) => `Claude 앱 플러그인 (${n}개)`,
-    appHint: '클로드 앱(대화·Cowork)에 설치된 플러그인입니다. 앱이 관리하므로 여기서 켜고 끌 수 없고, 위의 Claude Code 플러그인과는 따로 저장됩니다. 이 플러그인들이 Claude Code 세션에서 쓰이는지는 확인되지 않았고, 토큰 어림값도 붙이지 않았습니다.',
+    appHint: '클로드 앱(대화·Cowork)에 설치된 플러그인입니다. 앱이 관리하므로 여기서 켜고 끌 수 없고, Claude Code 플러그인과는 따로 저장됩니다. 이 플러그인들이 Claude Code 세션에서 쓰이는지는 확인되지 않았고, 토큰 어림값도 붙이지 않았습니다.',
     appBadge: '앱',
     appMcp: 'MCP 연결 있음',
     envApp: (n: number) => `Claude 앱 플러그인: ${n}개 (읽기 전용)`,
@@ -434,6 +435,7 @@ const UI = {
     opened: (n: number) => `Opened the AI tools panel. (${n} installed items read)`,
     on: 'On',
     off: 'Off',
+    subApp: (n: number) => `Claude app (${n})`,
     subPlugins: (n: number) => `Plugins (${n})`,
     subSkills: (n: number) => `Skills (${n})`,
     noneHere: 'Nothing in this section.',
@@ -529,7 +531,7 @@ const UI = {
     agGuardOff: 'not used',
     agGuardHint: 'Choose the 5-hour and the weekly (7-day) thresholds separately. No new sub-agent is started when that usage is at or above its percentage. You cannot turn both off.',
     appTitle: (n: number) => `Claude app plugins (${n})`,
-    appHint: 'Plugins installed in the Claude app (chat and Cowork). The app manages them, so they cannot be switched on or off here, and they are stored apart from the Claude Code plugins above. Whether they are used in a Claude Code session has not been confirmed, so no token estimate is shown.',
+    appHint: 'Plugins installed in the Claude app (chat and Cowork). The app manages them, so they cannot be switched on or off here, and they are stored apart from the Claude Code plugins. Whether they are used in a Claude Code session has not been confirmed, so no token estimate is shown.',
     appBadge: 'app',
     appMcp: 'has an MCP connection',
     envApp: (n: number) => `Claude app plugins: ${n} (read only)`,
@@ -684,6 +686,7 @@ const UI = {
     opened: (n: number) => `AIツールのパネルを開きました。(インストール済み${n}件を読み込み)`,
     on: 'オン',
     off: 'オフ',
+    subApp: (n: number) => `Claudeアプリ (${n})`,
     subPlugins: (n: number) => `プラグイン (${n})`,
     subSkills: (n: number) => `スキル (${n})`,
     noneHere: 'この区分には何もありません。',
@@ -779,7 +782,7 @@ const UI = {
     agGuardOff: '使わない',
     agGuardHint: '5時間と週間(7日)の基準を別々に選びます。その使用量が設定した割合以上のときは、新しいサブエージェントを開始しません。両方をオフにすることはできません。',
     appTitle: (n: number) => `Claudeアプリのプラグイン (${n}件)`,
-    appHint: 'Claudeアプリ(チャットとCowork)にインストールされたプラグインです。アプリが管理しているため、ここではオン/オフできず、上のClaude Codeのプラグインとは別に保存されています。これらがClaude Codeのセッションで使われるかは確認できておらず、トークンの概算も表示していません。',
+    appHint: 'Claudeアプリ(チャットとCowork)にインストールされたプラグインです。アプリが管理しているため、ここではオン/オフできず、Claude Codeのプラグインとは別に保存されています。これらがClaude Codeのセッションで使われるかは確認できておらず、トークンの概算も表示していません。',
     appBadge: 'アプリ',
     appMcp: 'MCP接続あり',
     envApp: (n: number) => `Claudeアプリのプラグイン: ${n}件 (読み取り専用)`,
@@ -934,6 +937,7 @@ const UI = {
     opened: (n: number) => `已打开 AI 工具面板。(读取了 ${n} 个已安装项目)`,
     on: '开',
     off: '关',
+    subApp: (n: number) => `Claude 应用 (${n})`,
     subPlugins: (n: number) => `插件 (${n})`,
     subSkills: (n: number) => `技能 (${n})`,
     noneHere: '此分类中没有内容。',
@@ -1029,7 +1033,7 @@ const UI = {
     agGuardOff: '不使用',
     agGuardHint: '5 小时和每周 (7 天) 的阈值分别选择。当对应用量达到或超过设定的百分比时，不会启动新的子代理。不能同时关闭两项。',
     appTitle: (n: number) => `Claude 应用插件 (${n} 个)`,
-    appHint: '这些是安装在 Claude 应用 (对话和 Cowork) 中的插件。由应用负责管理，所以不能在这里开关，并且与上面的 Claude Code 插件分开存放。它们是否会在 Claude Code 会话中被使用尚未确认，所以不显示 token 估算值。',
+    appHint: '这些是安装在 Claude 应用 (对话和 Cowork) 中的插件。由应用负责管理，所以不能在这里开关，并且与 Claude Code 插件分开存放。它们是否会在 Claude Code 会话中被使用尚未确认，所以不显示 token 估算值。',
     appBadge: '应用',
     appMcp: '含 MCP 连接',
     envApp: (n: number) => `Claude 应用插件: ${n} 个 (只读)`,
@@ -2569,6 +2573,7 @@ export const register: Register = (on, options) => {
     const reco: RecoState = { groups: Array.isArray(recoRaw?.groups) ? recoRaw.groups : [], at: recoRaw?.at ?? 0 }
     const tab = await read($, tabState)
     const sub = await read($, subState)
+    const isApp = sub === 'app' && appPlugins.length > 0 // 도구 탭의 세 번째 구역: Claude 앱 플러그인
     const agCfg = parseSettings(await read($, agentCfgState))
     // 사용량: Claude Code가 알려 주는 값. 읽기만 하고 비용은 들지 않는다
     const usage: any = await safe($.session.usage())
@@ -3121,19 +3126,11 @@ export const register: Register = (on, options) => {
     // Claude 앱 플러그인: 앱이 관리하는 것이라 읽기만 한다. 위의 Claude Code 플러그인과 테두리로 구분한다.
     const appSection = () => {
       if (appPlugins.length === 0) return null
-      const folded = !!openState['app:fold']
       return (
-        <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="inactive" paddingX={1}>
-          <Box gap={1}>
-            <Button
-              key="app-fold"
-              label={`${folded ? '▸' : '▾'} ${ui().appTitle(appPlugins.length)}`}
-              onPress={() => update($, open, m => ({ ...m, 'app:fold': !m['app:fold'] }))}
-            />
-          </Box>
-          {!folded && <Text dimColor>{ui().appHint}</Text>}
-          {!folded &&
-            appPlugins.map(ap => {
+        <Box flexDirection="column">
+          <Text bold>{ui().appTitle(appPlugins.length)}</Text>
+          <Text dimColor>{ui().appHint}</Text>
+          {appPlugins.map(ap => {
               const isOpen = !!openState[`app:${ap.id}`]
               const meta = [ui().appBadge, ap.marketplace, ap.owner ? `${ui().ownerLabel}: ${ap.owner}` : '', ap.skills.length > 0 ? ui().skills(ap.skills.length).trim() : '']
                 .filter(Boolean)
@@ -3208,7 +3205,7 @@ export const register: Register = (on, options) => {
     const skillCount = installed.filter(i => i.kind === 'skill').length
 
     // 지금 보고 있는 구역의 항목을 용도별로 묶는다. 접은 묶음은 항목을 숨기고, 나머지는 화면 높이 안에서 자른다.
-    const visible = installed.filter(i => i.kind === (sub === 'skills' ? 'skill' : 'plugin'))
+    const visible = isApp ? [] : installed.filter(i => i.kind === (sub === 'skills' ? 'skill' : 'plugin'))
     type Entry = { type: 'header'; cat: CatKey; items: Item[] } | { type: 'item'; it: Item }
     const grouped = new Map<CatKey, Item[]>()
     for (const it of visible) grouped.set(it.cat, [...(grouped.get(it.cat) ?? []), it])
@@ -3303,10 +3300,18 @@ export const register: Register = (on, options) => {
           <Box flexDirection="column">
         <Text> </Text>
         <Box gap={1}>
+          {appPlugins.length > 0 && (
+            <Button
+              key="sub-app"
+              label={ui().subApp(appPlugins.length)}
+              variant={isApp ? 'primary' : undefined}
+              onPress={() => update($, subState, () => 'app')}
+            />
+          )}
           <Button
             key="sub-plugins"
             label={ui().subPlugins(plugCount)}
-            variant={sub === 'skills' ? undefined : 'primary'}
+            variant={sub === 'skills' || isApp ? undefined : 'primary'}
             onPress={() => update($, subState, () => 'plugins')}
           />
           <Button
@@ -3318,7 +3323,8 @@ export const register: Register = (on, options) => {
         </Box>
         <Text> </Text>
         {idx.items.length === 0 && <Text dimColor>{ui().noInst}</Text>}
-        {idx.items.length > 0 && visible.length === 0 && <Text dimColor>{ui().noneHere}</Text>}
+        {isApp && appSection()}
+        {!isApp && idx.items.length > 0 && visible.length === 0 && <Text dimColor>{ui().noneHere}</Text>}
         {visible.length > 0 && (
           <Box flexDirection="column">
             <Text bold>{sub === 'skills' ? ui().secSkills(skillCount) : ui().secPlugins(plugCount)}</Text>
@@ -3343,14 +3349,13 @@ export const register: Register = (on, options) => {
             onPress={() => update($, open, m => ({ ...m, __all: true }))}
           />
         )}
-        {showAll && (
+        {showAll && !isApp && (
           <Button
             key="show-less"
             label={ui().showLess}
             onPress={() => update($, open, m => ({ ...m, __all: false }))}
           />
         )}
-        {sub !== 'skills' && appSection()}
         <Text> </Text>
           </Box>
         )}
