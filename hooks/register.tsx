@@ -18,8 +18,11 @@ import { attribute, bar, levelColor, levelOf, overGuard, pct, pickWindow, should
 import type { Level } from './usage'
 import { DAY_OPTIONS, DEFAULT_DAYS, emptyHistory, merge, parseHistory, record, unusedList } from './history'
 import type { History } from './history'
-import { enabledNames, isEmptyPlan, parseMine, planByCats, planByNames, PRESETS } from './presets'
-import type { Plan, PlanItem } from './presets'
+import {
+  addCustom, cleanLabel, deleteCustom, enabledNames, isEmptyPlan, MAX_CUSTOM, migrateMine, newId, parseCustom, parseMine,
+  planByCats, planByNames, PRESETS, renameCustom, replaceMembers, toggleMember,
+} from './presets'
+import type { Custom, Plan, PlanItem } from './presets'
 
 const PANE = 'ai-tools'
 
@@ -237,15 +240,31 @@ const UI = {
     agGuard: '사용량 보호',
     agGuardOff: '쓰지 않음',
     agGuardHint: '5시간과 주간(7일) 기준을 따로 고릅니다. 그 사용량이 정한 퍼센트 이상이면 새 하위 에이전트를 시작하지 않습니다. 둘 다 끌 수는 없습니다.',
+    tabMode: '작업 모드',
     prTitle: '작업 모드',
-    prHint: '지금 하려는 일에 맞는 플러그인만 켜고 나머지는 끕니다. 누르면 먼저 무엇이 바뀌는지 보여 줍니다.',
+    prHint: '지금 하려는 일에 맞는 플러그인만 켜고 나머지는 끕니다. 누르면 먼저 무엇이 바뀌는지 보여 주고 확인을 받습니다.',
+    prBuiltin: '기본 모드',
     pr_video: '영상 작업',
     pr_docs: '문서·기획 작업',
     pr_web: '웹·개발 작업',
     pr_data: '데이터 작업',
-    prMine: '내 프리셋',
-    prSave: '지금 켜진 것을 내 프리셋으로 저장',
-    prSaved: (n: number) => `켜진 플러그인 ${n}개를 내 프리셋으로 저장했습니다.`,
+    prMineTitle: '내 프리셋',
+    prEmpty: '아직 없습니다. 아래에 이름을 쓰면 지금 켜진 플러그인으로 만들고, 기본 모드의 `내 프리셋으로 복사`로도 만들 수 있습니다.',
+    prNewLabel: '새 프리셋 이름:',
+    prNewHint: '지금 켜진 플러그인으로 만듭니다 (Enter)',
+    prFull: (n: number) => `내 프리셋은 ${n}개까지 만들 수 있습니다. 안 쓰는 것을 지운 뒤 만드세요.`,
+    prCount: (n: number) => `${n}개`,
+    prSame: '지금 상태와 같음',
+    prApply: '적용',
+    prEdit: '편집',
+    prRename: '이름 바꾸기',
+    prDelete: '삭제',
+    prCopy: '내 프리셋으로 복사',
+    prNameLabel: '이름:',
+    prDelAsk: (name: string) => `"${name}" 프리셋을 지울까요? 플러그인 자체는 지워지지 않습니다.`,
+    prEditHint: '눌러서 넣고 뺍니다. ✓로 표시된 것이 이 프리셋을 적용할 때 켜 두는 플러그인입니다.',
+    prOverwrite: '지금 켜진 것으로 덮어쓰기',
+    prEditDone: '완료',
     prNothing: '이미 이 모드와 같은 상태입니다.',
     prAsk: (label: string, on: number, off: number, tok: string) =>
       `"${label}": ${on}개를 켜고 ${off}개를 끕니다${tok ? ` (끄면 상시 약 ${tok} 토큰 절약)` : ''}. 진행할까요?`,
@@ -462,15 +481,31 @@ const UI = {
     agGuard: 'Usage protection',
     agGuardOff: 'not used',
     agGuardHint: 'Choose the 5-hour and the weekly (7-day) thresholds separately. No new sub-agent is started when that usage is at or above its percentage. You cannot turn both off.',
+    tabMode: 'Work modes',
     prTitle: 'Work modes',
-    prHint: 'Turns on only the plugins that fit what you are about to do and turns the rest off. It shows what will change first.',
+    prHint: 'Turns on only the plugins that fit what you are about to do and turns the rest off. It shows what will change and asks first.',
+    prBuiltin: 'Built-in modes',
     pr_video: 'Video work',
     pr_docs: 'Docs & planning',
     pr_web: 'Web & dev',
     pr_data: 'Data work',
-    prMine: 'My preset',
-    prSave: 'Save what is on now as my preset',
-    prSaved: (n: number) => `Saved the ${n} enabled plugins as your preset.`,
+    prMineTitle: 'My presets',
+    prEmpty: 'None yet. Type a name below to make one from the plugins that are on now, or use "Copy to my presets" on a built-in mode.',
+    prNewLabel: 'New preset name:',
+    prNewHint: 'made from the plugins that are on now (Enter)',
+    prFull: (n: number) => `You can have up to ${n} presets. Delete one you do not use first.`,
+    prCount: (n: number) => `${n}`,
+    prSame: 'same as now',
+    prApply: 'Apply',
+    prEdit: 'Edit',
+    prRename: 'Rename',
+    prDelete: 'Delete',
+    prCopy: 'Copy to my presets',
+    prNameLabel: 'Name:',
+    prDelAsk: (name: string) => `Delete the preset "${name}"? The plugins themselves are not deleted.`,
+    prEditHint: 'Press to add or remove. The ones marked ✓ are kept on when this preset is applied.',
+    prOverwrite: 'Overwrite with what is on now',
+    prEditDone: 'Done',
     prNothing: 'Already the same as this mode.',
     prAsk: (label: string, on: number, off: number, tok: string) =>
       `"${label}": turn on ${on} and turn off ${off}${tok ? ` (saves about ${tok} always-loaded tokens)` : ''}. Go ahead?`,
@@ -1746,7 +1781,7 @@ const fmt = (at: number) => {
 let hist: History = emptyHistory(Date.now())
 let histWrote = 0
 let unusedDays = DEFAULT_DAYS
-let mine: string[] = [] // 내 프리셋: 저장해 둔 켜 둘 플러그인 이름
+let customs: Custom[] = [] // 내 프리셋 (이름과 켜 둘 플러그인 이름 목록)
 
 const loadHistory = async ($: any) => {
   const now = Date.now()
@@ -1754,7 +1789,16 @@ const loadHistory = async ($: any) => {
   hist = parseHistory(raw, now)
   const d = await safe($.store.get('unused-days'))
   unusedDays = DAY_OPTIONS.includes(d as number) ? (d as number) : DEFAULT_DAYS
-  mine = parseMine(await safe($.store.get('preset-mine')))
+  customs = parseCustom(await safe($.store.get('presets-v2')))
+  if (customs.length === 0) {
+    // 예전 버전이 저장한 "내 프리셋"(이름 목록 하나)이 있으면 새 모양으로 옮긴다
+    const old = await safe($.store.get('preset-mine'))
+    const moved = migrateMine(old, ui().prMineTitle)
+    if (moved.length > 0) {
+      customs = moved
+      await safe($.store.set('presets-v2', customs))
+    }
+  }
   if (raw === undefined || raw === null) await safe($.store.set('use-history', hist)) // 기록을 시작한 날을 남긴다
 }
 
@@ -1769,6 +1813,13 @@ const noteUse = async ($: any, name: string) => {
     hist = merge(hist, stored)
     await safe($.store.set('use-history', hist))
   }
+}
+
+/** 내 프리셋을 바꾸고 저장한 뒤 화면을 다시 그리게 한다 */
+const saveCustoms = async ($: any, next: Custom[]) => {
+  customs = next
+  await safe($.store.set('presets-v2', customs))
+  await setMove($, '__pm', String(Date.now()))
 }
 
 const setUnusedDays = async ($: any, n: number) => {
@@ -2354,28 +2405,31 @@ export const register: Register = (on, options) => {
             </Box>
           )
     }
-    // 작업 모드: 목적에 맞는 묶음만 켜고 나머지는 끈다. 누르면 무엇이 바뀌는지 보여 주고 확인을 받는다
-    const presetSection = () => {
+    // 작업 모드 탭: 목적에 맞는 플러그인만 켜고 나머지는 끈다. 기본 모드는 고정이고, 내 프리셋은 만들고 고치고 지울 수 있다.
+    const modeTab = () => {
       const pool = installed.filter(i => i.kind === 'plugin')
       const planItems: PlanItem[] = pool.map(i => ({ name: i.name, cat: i.cat, enabled: i.enabled, toggleable: canToggleItem(i) }))
       const byName = new Map(pool.map(i => [i.name, i] as const))
-      const plans: { id: string; label: string; plan: Plan }[] = PRESETS.map(pr => ({
+      const toItems = (names: string[]) => names.map(n => byName.get(n)).filter((x): x is Item => !!x)
+      type Row = { id: string; label: string; plan: Plan; custom?: Custom }
+      const builtin: Row[] = PRESETS.map(pr => ({
         id: pr.key,
         label: String(ui()[`pr_${pr.key}`] ?? pr.key),
         plan: planByCats(planItems, pr.cats),
       }))
-      if (mine.length > 0) plans.push({ id: 'mine', label: ui().prMine, plan: planByNames(planItems, mine) })
-      const busy = plans.find(x => (moveState[`preset:${x.id}`] ?? 'idle') !== 'idle')
-      const toItems = (names: string[]) => names.map(n => byName.get(n)).filter((x): x is Item => !!x)
-      const status = (x: { id: string; label: string; plan: Plan }) => {
+      const mineRows: Row[] = customs.map(c => ({ id: c.id, label: c.name, plan: planByNames(planItems, c.names), custom: c }))
+      const mv = (k: string) => moveState[k] ?? 'idle'
+
+      // 적용 확인·진행·결과 줄
+      const applyStatus = (x: Row) => {
         const mid = `preset:${x.id}`
-        const st = moveState[mid] ?? 'idle'
+        const st = mv(mid)
         const offItems = toItems(x.plan.off)
         const onItems = toItems(x.plan.on)
         if (st === 'confirm') {
           const saved = offItems.reduce((n, i) => n + (costOf(i) ?? 0), 0)
           return (
-            <Box flexDirection="column">
+            <Box flexDirection="column" paddingLeft={2}>
               <Text>{ui().prAsk(x.label, onItems.length, offItems.length, saved > 0 ? fmtTokens(saved) : '')}</Text>
               <Box gap={1}>
                 <Button key={`${mid}-yes`} label={ui().yes} onPress={() => void doPreset($, mid, { off: offItems, on: onItems })} />
@@ -2386,11 +2440,11 @@ export const register: Register = (on, options) => {
         }
         if (st.startsWith('run:')) {
           const [i, n] = st.slice(4).split('/')
-          return <Text dimColor>{ui().prRun(Number(i), Number(n))}</Text>
+          return <Text dimColor>  {ui().prRun(Number(i), Number(n))}</Text>
         }
         if (st.startsWith('done:')) {
           return (
-            <Box flexDirection="column">
+            <Box flexDirection="column" paddingLeft={2}>
               <Text dimColor>{ui().prDone(Number(st.slice(5)))}</Text>
               <Button key={`${mid}-ok`} label={ui().cacheOk} onPress={() => setMove($, mid, 'idle')} />
             </Box>
@@ -2398,7 +2452,7 @@ export const register: Register = (on, options) => {
         }
         if (st.startsWith('error:')) {
           return (
-            <Box flexDirection="column">
+            <Box flexDirection="column" paddingLeft={2}>
               <Text>⚠ {st.slice(6)}</Text>
               <Button key={`${mid}-retry`} label={ui().retry} onPress={() => setMove($, mid, 'idle')} />
             </Box>
@@ -2406,35 +2460,145 @@ export const register: Register = (on, options) => {
         }
         return null
       }
+
+      // 편집: 플러그인마다 눌러서 넣고 빼기 (묶음별로)
+      const editor = (c: Custom) => {
+        const groups = CATEGORY_ORDER.map(cat => ({ cat, list: pool.filter(i => i.cat === cat && canToggleItem(i)) })).filter(g => g.list.length > 0)
+        return (
+          <Box flexDirection="column" paddingLeft={2}>
+            <Text dimColor>{ui().prEditHint}</Text>
+            {groups.map(g => (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>{ui()[`catg_${g.cat}`] ?? g.cat}</Text>
+                <Box gap={1} paddingLeft={1}>
+                  {g.list.map(i => (
+                    <Button
+                      key={`pe-${c.id}-${i.name}`}
+                      label={`${c.names.includes(i.name) ? '✓' : '○'} ${i.name}`}
+                      variant={c.names.includes(i.name) ? 'primary' : undefined}
+                      onPress={() => void saveCustoms($, toggleMember(customs, c.id, i.name))}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            ))}
+            <Box gap={1} marginTop={1}>
+              <Button
+                key={`pe-now-${c.id}`}
+                label={ui().prOverwrite}
+                onPress={() => void saveCustoms($, replaceMembers(customs, c.id, enabledNames(planItems)))}
+              />
+              <Button key={`pe-done-${c.id}`} label={ui().prEditDone} onPress={() => setMove($, 'pm:edit', 'idle')} />
+            </Box>
+          </Box>
+        )
+      }
+
+      const row = (x: Row) => {
+        const c = x.custom
+        const editing = !!c && mv('pm:edit') === c.id
+        const renaming = !!c && mv('pm:ren') === c.id
+        const deleting = !!c && mv(`pm:del:${c.id}`) === 'confirm'
+        const applying = mv(`preset:${x.id}`) !== 'idle'
+        const nothing = isEmptyPlan(x.plan)
+        return (
+          <Box flexDirection="column" marginTop={1}>
+            <Box gap={1}>
+              <Text bold>{x.label}</Text>
+              {c && <Text dimColor>({ui().prCount(c.names.length)})</Text>}
+              {nothing && <Text dimColor>· {ui().prSame}</Text>}
+            </Box>
+            {!applying && !editing && !renaming && !deleting && (
+              <Box gap={1} paddingLeft={2}>
+                <Button
+                  key={`pa-${x.id}`}
+                  label={ui().prApply}
+                  onPress={() => (nothing ? $.ui.toast(ui().prNothing) : void setMove($, `preset:${x.id}`, 'confirm'))}
+                />
+                {c ? (
+                  <Box gap={1}>
+                    <Button key={`pe-${x.id}`} label={ui().prEdit} onPress={() => setMove($, 'pm:edit', c.id)} />
+                    <Button key={`pr-${x.id}`} label={ui().prRename} onPress={() => setMove($, 'pm:ren', c.id)} />
+                    <Button key={`pd-${x.id}`} label={ui().prDelete} onPress={() => setMove($, `pm:del:${c.id}`, 'confirm')} />
+                  </Box>
+                ) : (
+                  <Button
+                    key={`pc-${x.id}`}
+                    label={ui().prCopy}
+                    onPress={() => {
+                      const cats = PRESETS.find(pr => pr.key === x.id)?.cats ?? []
+                      const names = planItems.filter(i => i.toggleable && cats.includes(i.cat)).map(i => i.name)
+                      const next = addCustom(customs, newId(customs, Date.now()), x.label, names)
+                      if (next === customs) $.ui.toast(ui().prFull(MAX_CUSTOM))
+                      else void saveCustoms($, next)
+                    }}
+                  />
+                )}
+              </Box>
+            )}
+            {applyStatus(x)}
+            {renaming && c && (
+              <Box paddingLeft={2}>
+                <Input
+                  key={`prn-${c.id}`}
+                  label={`${ui().prNameLabel} `}
+                  value={c.name}
+                  onSubmit={(v: string) => {
+                    if (cleanLabel(v) === '') $.ui.toast(ui().agBad)
+                    else void saveCustoms($, renameCustom(customs, c.id, v))
+                    void setMove($, 'pm:ren', 'idle')
+                  }}
+                />
+              </Box>
+            )}
+            {deleting && c && (
+              <Box flexDirection="column" paddingLeft={2}>
+                <Text>{ui().prDelAsk(c.name)}</Text>
+                <Box gap={1}>
+                  <Button
+                    key={`pdy-${c.id}`}
+                    label={ui().yes}
+                    onPress={() => {
+                      void setMove($, `pm:del:${c.id}`, 'idle')
+                      void saveCustoms($, deleteCustom(customs, c.id))
+                    }}
+                  />
+                  <Button key={`pdn-${c.id}`} label={ui().cancel} onPress={() => setMove($, `pm:del:${c.id}`, 'idle')} />
+                </Box>
+              </Box>
+            )}
+            {editing && c && editor(c)}
+          </Box>
+        )
+      }
+
       return (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column">
           <Text bold>{ui().prTitle}</Text>
           <Text dimColor>{ui().prHint}</Text>
-          {busy ? (
-            status(busy)
-          ) : (
-            <Box flexDirection="column">
-              <Box gap={1}>
-                {plans.map(x => (
-                  <Button
-                    key={`preset-${x.id}`}
-                    label={x.label}
-                    onPress={() => (isEmptyPlan(x.plan) ? $.ui.toast(ui().prNothing) : void setMove($, `preset:${x.id}`, 'confirm'))}
-                  />
-                ))}
-              </Box>
-              <Button
-                key="preset-save"
-                label={ui().prSave}
-                onPress={() => {
-                  mine = enabledNames(planItems)
-                  void safe($.store.set('preset-mine', mine))
-                  $.ui.toast(ui().prSaved(mine.length))
-                  void setMove($, '__mine', String(mine.length))
+          <Text bold> </Text>
+          <Text bold>{ui().prBuiltin}</Text>
+          {builtin.map(row)}
+          <Text> </Text>
+          <Text bold>{ui().prMineTitle}</Text>
+          {mineRows.length === 0 && <Text dimColor>{ui().prEmpty}</Text>}
+          {mineRows.map(row)}
+          <Box marginTop={1}>
+            {customs.length < MAX_CUSTOM ? (
+              <Input
+                key="pnew"
+                label={`${ui().prNewLabel} `}
+                placeholder={ui().prNewHint}
+                onSubmit={(v: string) => {
+                  const next = addCustom(customs, newId(customs, Date.now()), v, enabledNames(planItems))
+                  if (next === customs) $.ui.toast(ui().agBad)
+                  else void saveCustoms($, next)
                 }}
               />
-            </Box>
-          )}
+            ) : (
+              <Text dimColor>{ui().prFull(MAX_CUSTOM)}</Text>
+            )}
+          </Box>
           <Text dimColor>{ui().prNote}</Text>
         </Box>
       )
@@ -2523,6 +2687,7 @@ export const register: Register = (on, options) => {
             ['tools', ui().tabTools],
             ['log', ui().tabLog(list.length)],
             ['reco', ui().tabReco(reco.groups.reduce((n, g) => n + g.local.length + g.github.length, 0))],
+            ['mode', ui().tabMode],
             ['env', ui().tabEnv],
           ] as const).map(([id, label]) => (
             <Button
@@ -2613,7 +2778,6 @@ export const register: Register = (on, options) => {
             {sub !== 'skills' && bulkButtons('all', visible)}
             {sub !== 'skills' && bulkStatus('all', visible)}
             <Text> </Text>
-            {sub !== 'skills' && presetSection()}
             {sub !== 'skills' && unusedSection()}
             {shownEntries.map(en => (en.type === 'header' ? headerRow(en.cat, en.items) : renderRow(en.it)))}
           </Box>
@@ -2635,6 +2799,7 @@ export const register: Register = (on, options) => {
         <Text> </Text>
           </Box>
         )}
+        {tab === 'mode' && modeTab()}
         {tab === 'reco' && (
           <Box flexDirection="column">
             <Text bold>{ui().recoTitle}</Text>

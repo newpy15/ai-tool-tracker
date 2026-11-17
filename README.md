@@ -39,7 +39,7 @@ So I built a panel that "shows the tools you used, helps you find the ones you n
 - **Tokens**: no model is used to scan files. A model is used only for translation (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (69 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (75 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -96,7 +96,7 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 | Understand what a plugin does | the **Tools** tab, click its name to expand it |
 | Switch off plugins you don't use, to cut tokens | the **Tools** tab → the `Turn off` button on the plugin's row (see "Cautions" below) |
 | Hand each group's work to its own sub-agent with its own model and token budget | the **Environment** tab → "Division of work" → `Turn on`, then, per group, pick a model (Haiku, Sonnet, Opus 5.5, Fable 5.2 ... or type any model ID) and type a token budget such as `150k` |
-| Turn on only what fits the job I am about to do (video, docs, web and dev, data) | the **Tools** tab → **Work modes** (it shows what will change and asks first); `Save what is on now as my preset` stores your own set |
+| Turn on only what fits the job I am about to do (video, docs, web and dev, data) | the **Work modes** tab (it shows what will change and asks first). Make your own presets from what is on now, then edit which plugins they keep, rename or delete them (up to 6) |
 | Find plugins I installed but never use, and switch them off | the **Tools** tab → **Unused plugins**: enabled plugins not used for 7, 14 or 30 days, each with its always-loaded tokens and a `Turn off` button (after the plugin has been tracked for that long) |
 | See roughly how many tokens each plugin costs just by being switched on | the **Tools** tab: "always ~N tokens" under each plugin and a total at the top (an estimate; turning a plugin off removes it) |
 | Check how much of my usage limit is left before a big job | the line under the tabs: **Usage** (5-hour and 7-day bars with the time to reset); a note appears when you pass 80% |
@@ -149,7 +149,7 @@ ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches**
 | `prompt.submit` | You send a message | Looks for topic words from a built-in dictionary (14 topics, at most 3 per message) and searches the local directory. **The text itself is not kept.** | Yes |
 | `tool.call` | Claude uses a tool or skill | Records the tool's name and a short detail in the log (for example a file name, a command description or a search word). Reading and searching tools such as `Read` and `Grep` are not recorded. | Yes |
 | `command.run` | You type one of the three commands | Re-reads the tools, searches directory and GitHub, or adds a hand-made log entry. | – |
-| `ui.render` | The panel needs drawing | Draws the four tabs from the saved state. If drawing fails it shows an error line instead of a blank panel. | – |
+| `ui.render` | The panel needs drawing | Draws the five tabs from the saved state. If drawing fails it shows an error line instead of a blank panel. | – |
 
 ### Where the information comes from
 
@@ -171,16 +171,17 @@ ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches**
 
 - **The log and the panel's state** (which tab is open, the last suggestions) live in Claude Code's session state for this plugin. They are never sent anywhere.
 - **Translations** are cached across sessions so they are not repeated.
-- **Work modes switch plugins on and off for real.** They ask first, never touch the "Other" group or this plugin, and take effect the next time Claude Code starts. "My preset" stores only the names of the plugins that were on.
+- **Work modes switch plugins on and off for real.** They ask first, never touch the "Other" group or this plugin, and take effect the next time Claude Code starts. Your own presets store only a name and the names of the plugins to keep on, and can be edited, renamed and deleted.
 - **A small usage history** (the plugin's name, the time it was last used, and a count; nothing else) is kept across sessions so the panel can tell which plugins went unused. It is never sent anywhere, and it is only filled in for tools this plugin can see being called. Plugins that help without being called (themes, for example) can look unused.
 - **Your files change only through buttons you press.** Switching plugins on or off and installing use the `claude` command. "Move to global" copies a folder-only skill into `~/.claude/skills` (or a session-only mod into `~/.claude/local-mods`), and "Remove old cache" and "Delete original" delete folders, each after a confirmation.
 
 ## What you can see
 
-The panel has four tabs.
+The panel has five tabs.
 
 | Tab | What it does |
 | --- | --- |
+| **Work modes** | Built-in modes (video, docs and planning, web and dev, data) and your own presets: apply, edit, rename, delete. |
 | **Tools** | Shows the **plugins** and **skills** installed on your PC with descriptions, **grouped by purpose** (Video, Captions & voice, Images & design, Planning & docs, Web & browser, Dev & deploy, Data & databases, Security, Files & cloud, Marketing & social, Other). Click a group name to fold it. Plugins can be turned on and off one by one, **by group, or all at once**, and clicking a name expands the skills, agents and MCP servers inside it. For skills it also shows how to call them with `/name`. |
 | **Live log** | Stacks the tools used while you work (skills, plugins, file edits, commands, subagents and so on) in time order, grouped by kind, with a one-line description of "what this tool is for". |
 | **Suggestions** | When you say something like "make a video and a pdf", it recognizes the topic (video, documents, ...) and shows matching tools per topic. It searches the plugin directory stored on your PC first, and when you press a button it checks star counts and searches GitHub live for more. For each topic it **recommends the 1–2 candidates with the most stars**; the rest are folded away. |

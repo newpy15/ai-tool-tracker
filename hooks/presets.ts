@@ -61,3 +61,74 @@ export const parseMine = (raw: unknown): string[] =>
   Array.isArray(raw) ? [...new Set(raw.filter(okName))].slice(0, MAX_MINE) : []
 
 export const isEmptyPlan = (p: Plan): boolean => p.on.length === 0 && p.off.length === 0
+
+// ---------------------------------------------------------------------------
+// 내 프리셋: 이름을 붙여 여러 개 저장하고, 고치고, 지울 수 있다
+// ---------------------------------------------------------------------------
+export type Custom = { id: string; name: string; names: string[] }
+/** 만들 수 있는 내 프리셋 수 */
+export const MAX_CUSTOM = 6
+const okId = (s: unknown): s is string => typeof s === 'string' && /^[a-z0-9]{1,16}$/.test(s)
+
+/** 화면에 보일 이름: 눈속임 글자와 줄바꿈을 없애고 30자까지만 */
+export const cleanLabel = (s: unknown): string =>
+  String(s ?? '')
+    .replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 30)
+
+/** 저장된 값이 어떤 모양이어도 안전한 목록으로 바로잡는다: id 중복, 이름 없음, 너무 많은 것은 버린다 */
+export const parseCustom = (raw: unknown): Custom[] => {
+  if (!Array.isArray(raw)) return []
+  const out: Custom[] = []
+  const seen = new Set<string>()
+  for (const r of raw) {
+    const name = cleanLabel((r as any)?.name)
+    if (!okId((r as any)?.id) || seen.has((r as any).id) || !name) continue
+    seen.add((r as any).id)
+    out.push({ id: (r as any).id, name, names: parseMine((r as any).names) })
+    if (out.length >= MAX_CUSTOM) break
+  }
+  return out
+}
+
+/** 예전 버전의 "내 프리셋"(이름 목록 하나)을 새 모양으로 옮긴다 */
+export const migrateMine = (old: unknown, label: string): Custom[] => {
+  const names = parseMine(old)
+  return names.length > 0 ? [{ id: 'u0', name: cleanLabel(label) || 'My preset', names }] : []
+}
+
+/** 새로 만든다. 가득 찼거나 id가 겹치거나 이름이 비면 그대로 돌려준다 */
+export const addCustom = (list: Custom[], id: string, name: string, names: string[]): Custom[] => {
+  const n = cleanLabel(name)
+  if (list.length >= MAX_CUSTOM || !okId(id) || list.some(c => c.id === id) || !n) return list
+  return [...list, { id, name: n, names: parseMine(names) }]
+}
+
+export const renameCustom = (list: Custom[], id: string, name: string): Custom[] => {
+  const n = cleanLabel(name)
+  return n ? list.map(c => (c.id === id ? { ...c, name: n } : c)) : list
+}
+
+export const deleteCustom = (list: Custom[], id: string): Custom[] => list.filter(c => c.id !== id)
+
+/** 플러그인 하나를 넣거나 뺀다 */
+export const toggleMember = (list: Custom[], id: string, plugin: string): Custom[] =>
+  list.map(c => {
+    if (c.id !== id || !okName(plugin)) return c
+    const has = c.names.includes(plugin)
+    return { ...c, names: has ? c.names.filter(x => x !== plugin) : [...c.names, plugin].slice(0, MAX_MINE) }
+  })
+
+/** 담은 플러그인을 통째로 바꾼다 (지금 켜진 것으로 덮어쓰기) */
+export const replaceMembers = (list: Custom[], id: string, names: string[]): Custom[] =>
+  list.map(c => (c.id === id ? { ...c, names: parseMine(names) } : c))
+
+/** 겹치지 않는 새 id */
+export const newId = (list: Custom[], seed: number): string => {
+  let n = seed
+  let id = `u${n.toString(36)}`
+  while (list.some(c => c.id === id)) id = `u${(++n).toString(36)}`
+  return id.slice(0, 16)
+}
