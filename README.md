@@ -4,15 +4,15 @@
 
 # ai-tool-tracker
 
-### See which tools made it. Find the ones you need. Switch off the ones you don't.
+### See what is used. See what it costs. Switch off what you don't need.
 
-**A side panel for Claude Code that shows, in real time, which plugins and skills you use, suggests tools for what you want to build, and lets you turn plugins off with a button.**
+**A side panel for Claude Code that shows, in real time, which plugins and skills are used, roughly how many tokens each one costs just by being installed, and lets you switch off the ones you don't need with a button. It also suggests tools for what you want to build.**
 
 [![MIT license](https://img.shields.io/github/license/newpy15/ai-tool-tracker?style=flat-square)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/newpy15/ai-tool-tracker?style=flat-square)](https://github.com/newpy15/ai-tool-tracker/commits/main)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-5c4ee5?style=flat-square)](#quick-start)
 
-[Quick start](#quick-start) · [How it works](#how-it-works) · [What you can see](#what-you-can-see) · [Can I trust the suggested links?](#can-i-trust-the-suggested-links) · [Cautions](#cautions) · [FAQ](#when-something-goes-wrong) · [Contributing](#contributing)
+[What it does](#what-it-does) · [Quick start](#quick-start) · [How it works](#how-it-works) · [What you can see](#what-you-can-see) · [Can I trust the suggested links?](#can-i-trust-the-suggested-links) · [Cautions](#cautions) · [FAQ](#when-something-goes-wrong) · [Contributing](#contributing)
 
 </div>
 
@@ -26,10 +26,21 @@
 AI coding feels overwhelming at first. Three things bothered me:
 
 1. It is hard to tell **which tool was used for which part** of what I built. I would like to look back and see "the video was made with Remotion", but there is no record.
-2. I don't really know **which plugins exist or what each one is for**. When I say "make me a video", I wished someone would point out tools worth trying first.
-3. Installed plugins and skills put their descriptions in front of the AI on every turn, even when you don't use them, and that costs tokens. I wanted to switch off the ones I don't use.
+2. Installed plugins and skills put their descriptions in front of the AI on every turn, even when you don't use them, and that costs tokens. I could not see **which plugins cost how much, or which ones I never use**, and I wanted to switch those off.
+3. I don't really know **which plugins exist or what each one is for**. When I say "make me a video", I wished someone would point out tools worth trying first.
 
-So I built a panel that "shows the tools you used, helps you find the ones you need, and lets you switch off the ones you don't". I am publishing it on GitHub so that beginners can find plugins easily and we can share bugs and improvements. I built it in conversation with Claude Code and fixed things by checking on a real PC.
+So I built a panel that "shows what is used and what it costs, lets you switch off what you don't need, and helps you find the tools you do". I am publishing it on GitHub so that beginners can find plugins easily and we can share bugs and improvements. I built it in conversation with Claude Code and fixed things by checking on a real PC.
+
+## What it does
+
+**The two main things**
+
+1. **See what is used.** A live log of the plugins, skills, MCP tools and sub-agents used while you work, each with a one-line description, plus **Unused plugins**: enabled plugins you have not used for 7, 14 or 30 days.
+2. **Cut what costs tokens.** Installed plugins load their descriptions into every conversation. The panel shows roughly how many tokens each plugin costs ("always ~N tokens"), your 5-hour and 7-day usage, and lets you switch plugins off one by one, by group or all at once, or pick a **work mode** that keeps on only what fits the job.
+
+**Also**: it suggests tools for what you want to build, showing stars, source tier and owner, and it groups your plugins by purpose (video, captions, planning, dev ...).
+
+**Advanced, off by default**: *Division of work* hands each group's work to its own sub-agent with its own model and token budget. It adds a little to every turn, so it is not part of the basic flow.
 
 ## What I paid attention to
 
@@ -86,7 +97,8 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 2. **Open the panel**: the panel opens automatically when you start. If you don't see it, type `/ai-tools`.
 3. **Look at the Tools tab**: switch between the `Plugins` and `Skills` buttons and read what is installed on your PC and what each item does. Click a name to expand what is inside.
 4. **Work as usual**: while you work, open the **Live log** tab to see the tools that were just used, stacked by kind.
-5. **Find tools**: say what you want to build (`make me a video`), or type `/ai-find video production`, then look at the **Suggestions** tab.
+5. **Cut tokens**: in the **Tools** tab look at "always ~N tokens" under each plugin and at **Unused plugins**, and switch off what you don't need. The unused list fills in after the plugin has watched your work for 7, 14 or 30 days.
+6. **Find tools**: say what you want to build (`make me a video`), or type `/ai-find video production`, then look at the **Suggestions** tab.
 
 ### When you want to...
 
@@ -94,17 +106,17 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 | --- | --- |
 | See which tools were just used | the **Live log** tab |
 | Understand what a plugin does | the **Tools** tab, click its name to expand it |
-| Switch off plugins you don't use, to cut tokens | the **Tools** tab → the `Turn off` button on the plugin's row (see "Cautions" below) |
-| Hand each group's work to its own sub-agent with its own model and token budget | the **Environment** tab → "Division of work" → `Turn on`, then, per group, pick a model (Haiku, Sonnet, Opus 5.5, Fable 5.2 ... or type any model ID) and type a token budget such as `150k` |
-| Turn on only what fits the job I am about to do (video, docs, web and dev, data) | the **Work modes** tab (it shows what will change and asks first). Make your own presets from what is on now, then edit which plugins they keep, rename or delete them (up to 6) |
-| Find plugins I installed but never use, and switch them off | the **Tools** tab → **Unused plugins**: enabled plugins not used for 7, 14 or 30 days, each with its always-loaded tokens and a `Turn off` button (after the plugin has been tracked for that long) |
 | See roughly how many tokens each plugin costs just by being switched on | the **Tools** tab: "always ~N tokens" under each plugin and a total at the top (an estimate; turning a plugin off removes it) |
-| Check how much of my usage limit is left before a big job | the line under the tabs: **Usage** (5-hour and 7-day bars with the time to reset); a note appears when you pass 80% |
+| Find plugins I installed but never use, and switch them off | the **Tools** tab → **Unused plugins**: enabled plugins not used for 7, 14 or 30 days, each with its always-loaded tokens and a `Turn off` button (after the plugin has been tracked for that long) |
+| Switch off plugins you don't use, to cut tokens | the **Tools** tab → the `Turn off` button on the plugin's row (see "Cautions" below) |
 | Switch off or on many plugins at once | the **Tools** tab → `Turn all off` / `Turn all on`, or `Turn this group off` on a group such as Video (it asks first) |
+| Turn on only what fits the job I am about to do (video, docs, web and dev, data) | the **Work modes** tab (it shows what will change and asks first). Make your own presets from what is on now, then edit which plugins they keep, rename or delete them (up to 6) |
+| Check how much of my usage limit is left before a big job | the line under the tabs: **Usage** (5-hour and 7-day bars with the time to reset); a note appears when you pass 80% |
 | Find tools for what you want to build | say it, or `/ai-find what you want` → the **Suggestions** tab |
 | Change the screen language | the language buttons at the top of the **Environment** tab |
 | The list didn't change after installing or removing a plugin | `/ai-tools` |
 | Record a tool you used outside Claude Code | `/ai-log tool-name what-you-did` |
+| (Advanced) Hand each group's work to its own sub-agent with its own model and token budget | the **Environment** tab → "Division of work" → `Turn on`, then, per group, pick a model (Haiku, Sonnet, Opus 5.5, Fable 5.2 ... or type any model ID) and type a token budget such as `150k` |
 
 ## How it works
 
@@ -119,7 +131,7 @@ ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches**
   └───────────────────────────────────────────────────┼────────┘
                                                       ▼
    read only                                   ┌─────────────┐
-   ~/.claude: installed plugins, skills,  ───► │  ui.render  │ ───► the panel (4 tabs)
+   ~/.claude: installed plugins, skills,  ───► │  ui.render  │ ───► the panel (5 tabs)
    settings, plugin directory cache            └─────────────┘
                                                       ▲
    only when you press a button or type /ai-find      │
