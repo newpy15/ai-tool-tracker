@@ -97,15 +97,15 @@ const looksLike = (l: string, text: string): boolean => {
   if (l === 'ko') return HANGUL.test(text)
   if (l === 'ja') return (KANA.test(text) || HAN.test(text)) && !HANGUL.test(text)
   if (l === 'zh') return HAN.test(text) && !KANA.test(text) && !HANGUL.test(text)
-  return !HANGUL.test(text) && !KANA.test(text) && !HAN.test(text) // en/es/fr/de
+  return !HANGUL.test(text) && !KANA.test(text) && !HAN.test(text) // en
 }
 
+// 지원하는 언어는 네 가지: 화면 문구는 모두 직접 적었고, 모델은 다른 플러그인의 설명 글을 번역할 때만 쓴다
 const LANG_NAME: Record<string, string> = {
   ko: 'Korean', en: 'English', ja: 'Japanese', zh: 'Simplified Chinese',
-  es: 'Spanish', fr: 'French', de: 'German',
 }
 const LANG_LABEL: Record<string, string> = {
-  ko: '한국어', en: 'English', ja: '日本語', zh: '中文', es: 'Español', fr: 'Français', de: 'Deutsch',
+  ko: '한국어', en: 'English', ja: '日本語', zh: '中文',
 }
 // 한국어로 고정돼 있던 도구 이름표의 영어판 (다른 언어는 이것을 번역한다)
 const LABEL_EN: Record<string, string> = {
@@ -130,6 +130,42 @@ const ROLE_EN: Record<string, string> = {
   agent: 'Hand research or analysis to a separate agent',
   files: 'Write and edit code and document files',
   research: 'Web search and reading pages',
+}
+const LABEL_JA: Record<string, string> = {
+  terminal: 'ターミナル', agent: 'サブエージェント', files: 'ファイル編集', research: 'ウェブ調査',
+  chrome: 'Chromeブラウザ', browser: '内蔵ブラウザ', ccd: 'デスクトップ標準ツール',
+}
+const ROLE_JA: Record<string, string> = {
+  ccd: 'Claudeデスクトップアプリの内蔵機能 (タスクリスト、画面表示、セッション管理など)',
+  remotion: 'コードで動画を作成・レンダリング',
+  hyperframes: 'HTMLから動画とモーショングラフィックスを作成',
+  figma: 'UIデザイン・ワイヤーフレーム・デザインからコードへ',
+  notion: 'ドキュメント・DB・予定の整理と保存',
+  artifact: '共有できるウェブページとダッシュボードの公開',
+  chrome: '実際のChromeでウェブの閲覧・入力・確認',
+  browser: 'localhostのプレビューと画面の検証',
+  terminal: 'コマンドの実行とサーバーの起動',
+  agent: '調査や分析などを別のエージェントに任せる',
+  files: 'コードやドキュメントファイルの作成・編集',
+  research: 'ウェブ検索とページの読み取り',
+}
+const LABEL_ZH: Record<string, string> = {
+  terminal: '终端', agent: '子代理', files: '文件编辑', research: '网页调研',
+  chrome: 'Chrome 浏览器', browser: '内置浏览器', ccd: '桌面内置工具',
+}
+const ROLE_ZH: Record<string, string> = {
+  ccd: 'Claude 桌面应用的内置功能 (任务列表、面板、会话管理等)',
+  remotion: '用代码制作并渲染视频',
+  hyperframes: '用 HTML 制作视频和动态图形',
+  figma: 'UI 设计、线框图、设计转代码',
+  notion: '整理并保存文档、数据库和日程',
+  artifact: '发布可分享的网页和仪表盘',
+  chrome: '在真实的 Chrome 中浏览、输入和检查网页',
+  browser: '预览 localhost 并验证屏幕上的内容',
+  terminal: '运行命令和启动服务器',
+  agent: '把调研或分析交给单独的代理',
+  files: '编写和编辑代码与文档文件',
+  research: '网页搜索和读取页面',
 }
 const UI = {
   ko: {
@@ -622,49 +658,506 @@ const UI = {
     usage: 'Usage: /ai-log <tool> <what you did>   e.g. /ai-log image-tool logo draft',
     logged: (t: string) => `Logged: ${t}`,
   },
+  ja: {
+    used: '使われたツールとその役割',
+    none: 'まだありません。作業を進めると表示されます。',
+    timeline: 'タイムライン',
+    noInst: 'インストール済みのスキルやプラグインが見つかりません。',
+    skills: (n: number) => ` (スキル${n}件)`,
+    noDesc: '説明なし',
+    unknown: '説明なし (インストール済み一覧に見つかりません)',
+    ext: '外部ツール (手動で記録)',
+    plugin: 'プラグイン',
+    skill: 'スキル',
+    opened: (n: number) => `AIツールのパネルを開きました。(インストール済み${n}件を読み込み)`,
+    on: 'オン',
+    off: 'オフ',
+    subPlugins: (n: number) => `プラグイン (${n})`,
+    subSkills: (n: number) => `スキル (${n})`,
+    noneHere: 'この区分には何もありません。',
+    mcpGeneric: '接続中のMCPサーバーのツール (インストール済み一覧に説明なし)',
+    secPlugins: (n: number) => `プラグイン${n}件 · オン/オフ`,
+    hintPlugins: 'オンの間は、フックとMCPサーバーが動き続けます。スキルは呼び出したときだけ働きます。',
+    secSkills: (n: number) => `スキル${n}件 · コマンドで呼び出し`,
+    hintSkills: '/名前 と入力すると適用されます。呼び出すまで何もしません。(説明文だけは常に読み込まれます)',
+    turnOn: 'オンにする',
+    turnOff: 'オフにする',
+    agentTag: 'エージェント',
+    noParts: 'スキル、エージェント、MCPサーバーはありません',
+    nowOn: 'オンにしました。次にClaude Codeを起動したときから有効です。',
+    nowOff: 'オフにしました。次にClaude Codeを起動したときから有効です。(説明文がモデルに送られなくなり、トークンの節約になります)',
+    cacheTitle: (n: number) => `古いキャッシュ: ${n}件`,
+    cacheNone: '削除できる古いキャッシュはありません。',
+    cacheBtn: '古いキャッシュを削除',
+    cacheAsk: (n: number) =>
+      `${n}個のフォルダを削除します。現在インストール中のバージョンと使用中の印があるものは残します。元に戻せません。`,
+    cacheDone: (n: number) => `${n}件を削除しました。`,
+    cacheOk: 'OK',
+    cacheSkipped: (n: number) => `${n}件をスキップ (使用中の印あり)`,
+    updateGlobal: 'グローバル版を更新',
+    tabTools: 'ツール',
+    tabLog: (n: number) => (n > 0 ? `ライブログ (${n})` : 'ライブログ'),
+    tabEnv: '環境',
+    showMore: (n: number) => `▾ さらに${n}件を表示`,
+    showLess: '▴ 閉じる',
+    env: '検出した環境',
+    envRoot: '設定フォルダ',
+    envCount: (p: number, s: number, m: number) => `読み込み: プラグイン${p} · スキル${s} · MCPサーバー${m}`,
+    cliOk: '利用可能',
+    cliNo: '見つかりません (グローバルへのインストールとマーケットプレイス登録に必要)',
+    envNone: '設定フォルダから何も読み込めませんでした。CLAUDE_CONFIG_DIR またはユーザーフォルダを確認してください。',
+    unreadHead: '読み込めなかったもの',
+    langLabel: '言語',
+    scopeAll: 'すべての場所',
+    scopeFolder: (p: string) => `フォルダ ${p}`,
+    folderOnly: '特定のフォルダでだけ使えるツール',
+    noFolder: (n: number) => `フォルダ専用のツールはありません。(${n}件のプロジェクトを確認)`,
+    alreadyGlobal: 'すでにどこでも使えます (移動は不要)',
+    toGlobal: 'グローバルへ移動',
+    askCopy: 'すべてのフォルダで使えるようにコピーしますか？元のファイルは残ります。',
+    yes: 'はい',
+    cancel: 'キャンセル',
+    copied: 'グローバルにコピーしました。元のファイルは残っています。',
+    removeOrig: '元のファイルを削除',
+    askRemove: '元のファイルを削除しますか？元に戻せません。',
+    removed: '移動が完了しました。(元のファイルを削除)',
+    manualOff: 'そのフォルダの設定で、ご自身でオフにしてください。',
+    modLabel: 'mod (このセッションのみ)',
+    askMod: '~/.claude/local-mods にコピーして、すべてのプロジェクトにインストールしますか？元のファイルを後で編集しても同期されません。',
+    modKeep: 'セッションフォルダの元のファイルはそのままです。グローバル版は次のセッションから使われます。',
+    allOn: 'すべてオンにする',
+    allOff: 'すべてオフにする',
+    groupOn: 'このグループをオンにする',
+    groupOff: 'このグループをオフにする',
+    bulkAskOn: (n: number) => `プラグイン${n}件をオンにします。次にClaude Codeを起動したときから有効です。続けますか？`,
+    bulkAskOff: (n: number) =>
+      `プラグイン${n}件をオフにします。次にClaude Codeを起動したときから有効で、あとでオンに戻せます。このプラグイン (ai-tool-tracker) はオフになりません。続けますか？`,
+    bulkRun: (i: number, n: number) => `処理中… ${i}/${n}`,
+    bulkDone: (n: number) => `${n}件を変更しました。次にClaude Codeを起動したときから有効です。`,
+    catg_video: '動画',
+    catg_captions: '字幕・音声',
+    catg_image: '画像・デザイン',
+    catg_planning: '企画・ドキュメント',
+    catg_web: 'ウェブ・ブラウザ',
+    catg_dev: '開発・デプロイ',
+    catg_data: 'データ・DB',
+    catg_security: 'セキュリティ',
+    catg_files: 'ファイル・クラウド',
+    catg_marketing: 'マーケティング・SNS',
+    catg_other: 'その他',
+    recoPick: (n: number) => `おすすめ${n}位`,
+    recoTop: (n: number) => `おすすめ · スターが最も多い${n}件`,
+    recoRestShow: (n: number) => `残りの${n}件を表示`,
+    recoRestHide: '残りを隠す',
+    recoNoTop: (m: number) => `スターが${m}個以上の候補がないため、おすすめはありません。以下の候補はスターが少ないものです。`,
+    recoStarsUnknown: 'スターの数をまだ確認していません。下のボタンで確認すると、スターが多いものをおすすめします。',
+    recoStarsBtn: 'スターの数を確認',
+    recoStarsChecking: 'スターの数を確認中…',
+    fewStars: (n: number, m: number) =>
+      `スター${n}個で、最小値(${m}個)に届きません。まだほとんど知られておらず、信頼する根拠が少ないです。`,
+    starsUnknown: 'スター: 未確認',
+    minStarsLabel: 'おすすめに必要な最小スター数',
+    minStarsHint: '未審査のリポジトリは、スターがこの数より少ないとおすすめしません。0にすると絞り込みません。',
+    agTitle: '分業 (用途別のサブエージェント)',
+    agHint: 'オンにすると、動画や開発などのグループごとに専用のサブエージェントができ、決めたモデルとトークン上限の範囲でその作業を担当します。毎ターン、エージェント一覧が少し増えるので、初期設定ではオフです。変更は次のターンから有効です。値を入力欄に書いてEnterを押してください。',
+    guardDeny: (label: string, p: number, g: number) =>
+      `${label}の使用量が${p}%(保護の基準${g}%)のため、新しいサブエージェントを開始しませんでした。リセット後にもう一度試すか、環境タブで基準を上げてください。`,
+    spawnCap: (n: number) => `1回の依頼で開始できるサブエージェントは${n}個までです。残りは次の依頼で行ってください。`,
+    agGuard: '使用量の保護',
+    agGuardOff: '使わない',
+    agGuardHint: '5時間と週間(7日)の基準を別々に選びます。その使用量が設定した割合以上のときは、新しいサブエージェントを開始しません。両方をオフにすることはできません。',
+    tabMode: '作業モード',
+    prTitle: '作業モード',
+    prHint: 'これから行う作業に合うプラグインだけをオンにして、残りをオフにします。変更内容を先に表示して確認します。',
+    prBuiltin: '標準モード',
+    pr_video: '動画の作業',
+    pr_docs: '企画・ドキュメント',
+    pr_web: 'ウェブ・開発',
+    pr_data: 'データの作業',
+    prMineTitle: 'マイプリセット',
+    prEmpty: 'まだありません。下に名前を入力すると、いまオンのプラグインで作成します。標準モードの「マイプリセットにコピー」でも作れます。',
+    prNewLabel: '新しいプリセット名:',
+    prNewHint: 'いまオンのプラグインで作成します (Enter)',
+    prFull: (n: number) => `プリセットは${n}件まで作れます。使わないものを先に削除してください。`,
+    prCount: (n: number) => `プラグイン${n}件`,
+    prSame: '現在と同じ',
+    prApply: '適用',
+    prEdit: '編集',
+    prRename: '名前を変更',
+    prDelete: '削除',
+    prCopy: 'マイプリセットにコピー',
+    prNameLabel: '名前:',
+    prDelAsk: (name: string) => `プリセット「${name}」を削除しますか？プラグイン自体は削除されません。`,
+    prEditHint: '押すと追加・削除できます。✓の付いたものが、このプリセットの適用時にオンのままになるプラグインです。',
+    prOverwrite: 'いまオンのもので上書き',
+    prEditDone: '完了',
+    prNothing: 'すでにこのモードと同じ状態です。',
+    prAsk: (label: string, on: number, off: number) => `「${label}」: ${on}件をオンにして${off}件をオフにします。続けますか？`,
+    prAskSave: (label: string, on: number, off: number, tok: string) =>
+      `「${label}」: ${on}件をオンにして${off}件をオフにします (常時読み込みの約${tok}トークンを節約)。続けますか？`,
+    prRun: (i: number, n: number) => `適用中… ${i}/${n}`,
+    prDone: (n: number) => `${n}件を変更しました。次にClaude Codeを起動したときから有効です。`,
+    prNote: '「その他」グループと、このプラグイン自身には触れません。',
+    unTitle: '使っていないプラグイン',
+    unDays: (n: number) => `${n}日の基準`,
+    unLearning: (d: number, n: number) => `使用履歴を集めています (${d}日目)。${n}日たつと、使われていないプラグインをお知らせします。`,
+    unNone: (n: number) => `オンのプラグインはすべて、直近${n}日以内に使われました。`,
+    unNever: '使用の記録なし',
+    unAgo: (d: number) => `最後の使用は${d}日前`,
+    unOffAll: (n: number) => `使っていない${n}件をすべてオフにする`,
+    unOffAllSave: (n: number, t: string) => `使っていない${n}件をすべてオフにする (約${t}トークンを節約)`,
+    unNote: 'プラグイン名、最後に使われた時刻、回数だけをこのPCに保存します。インストールしたばかりのプラグインは単にまだ使っていないだけかもしれません。また、呼び出さずに働くプラグイン(テーマなど)は使われていないように見えることがあるので、確認してからオフにしてください。',
+    tokAlways: (t: string) => `常時 約${t}トークン`,
+    tokOffNote: 'オフなのでトークンを使いません',
+    tokTotal: (t: string, n: number) => `オンのプラグイン${n}件が毎回の会話で先に読み込む量: 約${t}トークン`,
+    tokNote: '「常時」は、使わなくても毎回の会話に載る説明文の概算です。実際に使われた量ではありません。オフにするとその分が減ります。',
+    usTitle: '使用量',
+    usFive: '5時間',
+    usSeven: '7日間',
+    usCtx: '会話の長さ',
+    usCost: '今回のセッション',
+    usResetH: (h: number, m: number) => `${h}時間${m}分後にリセット`,
+    usResetM: (m: number) => `${m}分後にリセット`,
+    usNone: 'まだ使用量の情報がありません。最初の応答が終わると表示されます。',
+    usNote: 'Claude Codeが知らせるパーセントです。正確なトークン数は公開されていません。',
+    usAdvMid: '半分以上使いました。軽い作業は、分業でHaikuに任せると節約できます。',
+    usAdvHigh: '上限が近づいています。大きな作業はリセット後に回すか、Haikuと低いトークン上限で実行してください。',
+    usAdvFull: 'ほぼ使い切りました。リセットまで待つか、ごく軽い作業だけにしてください。',
+    usToast: (p: string) => `5時間の使用量が${p}%です。大きな作業の前に、パネルの使用量を確認してください。`,
+    agRegFail: (label: string) => `${label}のサブエージェントを登録できませんでした。環境タブでモデルIDを確認してください。`,
+    agModel: 'モデル',
+    agModelCustom: 'モデルIDを直接入力:',
+    agRange: (min: string, max: string) => `${min} ~ ${max} (例: 150k)`,
+    agAdjusted: (min: string, max: string, v: string) => `このモデルで許される範囲(${min} ~ ${max})を外れていたため、${v}に合わせました。`,
+    agBad: '読み取れない値のため、保存しませんでした。',
+    agBudget: 'トークン上限',
+    agTurns: '最大ターン数',
+    agNoLimit: '制限なし',
+    agInherit: '現在のモデルのまま',
+    agUsed: (runs: number, tokens: string) => `今回のセッション: ${runs}回 · ${tokens}トークン`,
+    agOver: (label: string, used: string, budget: string) =>
+      `${label}グループがトークン上限(${budget}、使用${used})に達したため、新しいサブエージェントを開始しませんでした。環境タブで上限を上げられます。`,
+    agNone: '作業を任せられるグループがまだありません。ツールタブでプラグインが用途別にまとまると、ここに表示されます。',
+    agLine: (model: string, budget: string, used: string) => `サブエージェント: ${model} · 上限 ${budget} · 使用 ${used}`,
+    agLimitNote: '上限は、新しいサブエージェントを開始するときに確認します。実行中のものを途中で止めることはなく、1回の長さは「最大ターン数」で制限します。サブエージェントは開始するだけで約6万トークンを使うため、上限はモデルごとの範囲(最小10万)内でのみ受け付けます。高価なモデルほど最大値は低くなります。',
+    tabReco: (n: number) => (n > 0 ? `おすすめ (${n})` : 'おすすめ'),
+    recoTitle: 'こんなツールはいかがですか？',
+    recoNone: 'まだおすすめはありません。「動画を作って」のように話しかけるか、/ai-find 動画 で検索してください。',
+    recoTopic: (c: string, t: string) => `検出したテーマ: ${c} · 検索: ${t}`,
+    recoTopicFree: (t: string) => `検索: ${t}`,
+    recoLocalNone: 'ディレクトリに一致するプラグインが見つかりません。',
+    recoGithubTitle: 'GitHubをリアルタイム検索',
+    recoGithubBtn: (t: string) => `GitHubでさらに検索: ${t}`,
+    recoSending: (t: string) =>
+      `押すと、検索語「${t}」と上のリポジトリ名 (owner/repo) がGitHubに送られます。会話の内容は送られません。`,
+    recoSearching: 'GitHubを検索中…',
+    recoGhNone: 'GitHubに一致するリポジトリが見つかりません。',
+    recoGhErr: (m: string) => `GitHubの検索に失敗しました: ${m}`,
+    tier_official: '公式マーケットプレイス',
+    tier_anthropic: 'Anthropicが審査済み',
+    tier_partner: '審査済み (パートナー)',
+    tier_added: '追加したマーケットプレイス',
+    tier_listed: 'ディレクトリに掲載 · 未審査',
+    tier_github: '出所未確認 (GitHub検索)',
+    flag_stale: '1年以上更新されていません',
+    flag_fresh: 'リポジトリの作成から30日未満です',
+    flag_noLicense: 'ライセンスなし',
+    flag_fork: '別のリポジトリのフォークです',
+    flag_ratio: 'スター数に比べてフォークが非常に少ないです。スター数を信用しないでください',
+    ownerLabel: '所有者',
+    noCmd: '名前に特殊文字が含まれるため、インストールコマンドは作成しませんでした。リポジトリの案内に従ってください。',
+    trustNote: 'ラベルは目安であり、安全を保証するものではありません。インストールの前に、所有者が正しいか確認し、リポジトリのコードと要求される権限を読んでください。',
+    recoInstalled: 'インストール済み',
+    recoWarn: 'このリポジトリは審査されていません。インストールの前に、コードと権限をご自身で確認してください。',
+    recoCopy: 'インストールコマンドをコピー',
+    recoCopied: 'コマンドをコピーしました。',
+    recoOpen: 'リンクを開く',
+    recoToast: (n: number, c: string) => `「${c}」向けのおすすめツールが${n}件あります — おすすめタブをご覧ください`,
+    findUsage: '使い方: /ai-find <やりたいこと>   例: /ai-find 動画制作',
+    findStarted: (t: string) => `「${t}」を検索中です。おすすめタブをご覧ください。(この検索語はGitHubにも送られました)`,
+    cat_video: '動画',
+    cat_image: '画像',
+    cat_slides: 'スライド',
+    cat_website: 'ウェブサイト',
+    cat_design: 'デザイン',
+    cat_docs: 'ドキュメント',
+    cat_audio: '音楽・音声',
+    cat_data: 'グラフ・データ',
+    cat_testing: 'テスト',
+    cat_git: 'gitとGitHub',
+    cat_db: 'データベース',
+    cat_game: 'ゲーム',
+    cat_translate: '翻訳',
+    cat_marketing: 'マーケティング・SNS',
+    renderErr: 'パネルの描画中にエラーが起きました。もう一度 /ai-tools を試してください。',
+    paneTitle: 'AIツール',
+    cmdTools: 'インストール済みのスキルとプラグイン、この作業で使われたツールをパネルに表示します',
+    cmdLog: 'Claude Code の外で使ったツールを手動で記録します: /ai-log image-tool logo draft',
+    manualNote: '(手動で記録)',
+    running: (n: string) => `${n} を実行中`,
+    existsGlobal: '同じ名前のコピーがすでにグローバルフォルダにあります',
+    unreadPath: (n: string, p: string) => `${n}: パスが見つかりません (${p})`,
+    unreadEmpty: (n: string) => `${n}: 説明、スキル、エージェント、MCPが見つかりません`,
+    transStatus: (a: number, b: number, c: number, d: number) => `翻訳: 画面 ${a}/${b} · 説明文 ${c}/${d}`,
+    retry: 'もう一度試す',
+    usage: '使い方: /ai-log <ツール> <行ったこと>   例: /ai-log image-tool logo draft',
+    logged: (t: string) => `記録しました: ${t}`,
+  },
+  zh: {
+    used: '已使用的工具及其用途',
+    none: '暂无内容。随着你的操作会逐步显示。',
+    timeline: '时间线',
+    noInst: '没有找到已安装的技能或插件。',
+    skills: (n: number) => ` (${n}个技能)`,
+    noDesc: '无说明',
+    unknown: '无说明 (在已安装列表中未找到)',
+    ext: '外部工具 (手动记录)',
+    plugin: '插件',
+    skill: '技能',
+    opened: (n: number) => `已打开 AI 工具面板。(读取了 ${n} 个已安装项目)`,
+    on: '开',
+    off: '关',
+    subPlugins: (n: number) => `插件 (${n})`,
+    subSkills: (n: number) => `技能 (${n})`,
+    noneHere: '此分类中没有内容。',
+    mcpGeneric: '已连接 MCP 服务器的工具 (已安装列表中无说明)',
+    secPlugins: (n: number) => `${n} 个插件 · 开/关`,
+    hintPlugins: '开启期间，它们的钩子和 MCP 服务器会持续运行。技能只在被调用时才起作用。',
+    secSkills: (n: number) => `${n} 个技能 · 通过命令调用`,
+    hintSkills: '输入 /名称 即可使用。在被调用之前它们什么也不做。(只有说明文字会一直被加载)',
+    turnOn: '开启',
+    turnOff: '关闭',
+    agentTag: '代理',
+    noParts: '没有技能、代理或 MCP 服务器',
+    nowOn: '已开启。下次启动 Claude Code 时生效。',
+    nowOff: '已关闭。下次启动 Claude Code 时生效。(它的说明文字将不再发送给模型，从而节省 token)',
+    cacheTitle: (n: number) => `旧缓存: ${n} 个`,
+    cacheNone: '没有可清理的旧缓存。',
+    cacheBtn: '清理旧缓存',
+    cacheAsk: (n: number) =>
+      `将删除 ${n} 个文件夹。当前已安装的版本和标记为使用中的版本会保留。此操作无法撤销。`,
+    cacheDone: (n: number) => `已删除 ${n} 个。`,
+    cacheOk: '确定',
+    cacheSkipped: (n: number) => `已跳过 ${n} 个 (标记为使用中)`,
+    updateGlobal: '更新全局副本',
+    tabTools: '工具',
+    tabLog: (n: number) => (n > 0 ? `实时日志 (${n})` : '实时日志'),
+    tabEnv: '环境',
+    showMore: (n: number) => `▾ 再显示 ${n} 个`,
+    showLess: '▴ 收起',
+    env: '检测到的环境',
+    envRoot: '配置文件夹',
+    envCount: (p: number, s: number, m: number) => `已读取: ${p} 个插件 · ${s} 个技能 · ${m} 个 MCP 服务器`,
+    cliOk: '可用',
+    cliNo: '未找到 (全局安装和注册插件市场时需要)',
+    envNone: '没有从配置文件夹中读取到任何内容。请检查 CLAUDE_CONFIG_DIR 或你的用户文件夹。',
+    unreadHead: '无法读取',
+    langLabel: '语言',
+    scopeAll: '所有位置',
+    scopeFolder: (p: string) => `文件夹 ${p}`,
+    folderOnly: '只在某个文件夹中可用的工具',
+    noFolder: (n: number) => `没有仅限文件夹的工具。(已检查 ${n} 个项目)`,
+    alreadyGlobal: '已在所有位置可用 (无需移动)',
+    toGlobal: '移到全局',
+    askCopy: '要复制一份，让它在所有文件夹中都能用吗？原件会保留。',
+    yes: '是',
+    cancel: '取消',
+    copied: '已复制到全局。原件仍然保留。',
+    removeOrig: '删除原件',
+    askRemove: '要删除原件吗？此操作无法撤销。',
+    removed: '移动完成。(已删除原件)',
+    manualOff: '请自行在那个文件夹的设置中将其关闭。',
+    modLabel: 'mod (仅限本次会话)',
+    askMod: '要复制到 ~/.claude/local-mods 并安装到所有项目吗？之后对原件的修改不会同步。',
+    modKeep: '会话文件夹中的原件保持不变。全局安装将从下次会话开始使用。',
+    allOn: '全部开启',
+    allOff: '全部关闭',
+    groupOn: '开启此分组',
+    groupOff: '关闭此分组',
+    bulkAskOn: (n: number) => `将开启 ${n} 个插件。下次启动 Claude Code 时生效。要继续吗？`,
+    bulkAskOff: (n: number) =>
+      `将关闭 ${n} 个插件。下次启动 Claude Code 时生效，之后可以再开启。本插件 (ai-tool-tracker) 不会被关闭。要继续吗？`,
+    bulkRun: (i: number, n: number) => `处理中… ${i}/${n}`,
+    bulkDone: (n: number) => `已更改 ${n} 个。下次启动 Claude Code 时生效。`,
+    catg_video: '视频',
+    catg_captions: '字幕·语音',
+    catg_image: '图像·设计',
+    catg_planning: '策划·文档',
+    catg_web: '网页·浏览器',
+    catg_dev: '开发·部署',
+    catg_data: '数据·数据库',
+    catg_security: '安全',
+    catg_files: '文件·云端',
+    catg_marketing: '营销·社交媒体',
+    catg_other: '其他',
+    recoPick: (n: number) => `推荐第 ${n} 名`,
+    recoTop: (n: number) => `推荐 · 星标最多的 ${n} 个`,
+    recoRestShow: (n: number) => `查看其余 ${n} 个`,
+    recoRestHide: '隐藏其余',
+    recoNoTop: (m: number) => `没有星标达到 ${m} 个的候选项，所以无法给出推荐。下面的候选项星标较少。`,
+    recoStarsUnknown: '尚未检查星标数量。点击下面的按钮检查后，会推荐星标最多的项目。',
+    recoStarsBtn: '检查星标数量',
+    recoStarsChecking: '正在检查星标数量…',
+    fewStars: (n: number, m: number) =>
+      `${n} 个星标，低于最低要求 (${m} 个)。几乎没有人了解它，所以缺少值得信任的依据。`,
+    starsUnknown: '星标: 尚未检查',
+    minStarsLabel: '推荐所需的最低星标数',
+    minStarsHint: '未经审核的仓库，星标少于这个数量就不会被推荐。设为 0 则不做筛选。',
+    agTitle: '分工 (按用途划分的子代理)',
+    agHint: '开启后，视频、开发等每个分组都会有一个专属子代理，在你设定的模型和 token 额度内负责这类工作。它会让每一轮的代理列表稍微变长，所以默认是关闭的。更改从下一轮开始生效。在输入框中填写数值后按 Enter。',
+    guardDeny: (label: string, p: number, g: number) =>
+      `${label}用量为 ${p}% (保护阈值 ${g}%)，所以没有启动新的子代理。请在重置后再试，或在环境标签页中提高阈值。`,
+    spawnCap: (n: number) => `每次请求最多只启动 ${n} 个子代理。其余的请在下一次请求中处理。`,
+    agGuard: '用量保护',
+    agGuardOff: '不使用',
+    agGuardHint: '5 小时和每周 (7 天) 的阈值分别选择。当对应用量达到或超过设定的百分比时，不会启动新的子代理。不能同时关闭两项。',
+    tabMode: '工作模式',
+    prTitle: '工作模式',
+    prHint: '只开启适合你接下来要做的事的插件，并关闭其余的。会先显示将要发生的更改，并征求确认。',
+    prBuiltin: '内置模式',
+    pr_video: '视频工作',
+    pr_docs: '策划·文档',
+    pr_web: '网页·开发',
+    pr_data: '数据工作',
+    prMineTitle: '我的预设',
+    prEmpty: '还没有。在下面输入名称，就会用当前已开启的插件创建一个；也可以对内置模式使用“复制为我的预设”。',
+    prNewLabel: '新预设名称:',
+    prNewHint: '用当前已开启的插件创建 (Enter)',
+    prFull: (n: number) => `最多可以创建 ${n} 个预设。请先删除不用的预设。`,
+    prCount: (n: number) => `${n} 个插件`,
+    prSame: '与当前相同',
+    prApply: '应用',
+    prEdit: '编辑',
+    prRename: '重命名',
+    prDelete: '删除',
+    prCopy: '复制为我的预设',
+    prNameLabel: '名称:',
+    prDelAsk: (name: string) => `要删除预设“${name}”吗？插件本身不会被删除。`,
+    prEditHint: '点击即可添加或移除。标有 ✓ 的是应用此预设时保持开启的插件。',
+    prOverwrite: '用当前已开启的覆盖',
+    prEditDone: '完成',
+    prNothing: '已经和此模式一致。',
+    prAsk: (label: string, on: number, off: number) => `“${label}”: 开启 ${on} 个，关闭 ${off} 个。要继续吗？`,
+    prAskSave: (label: string, on: number, off: number, tok: string) =>
+      `“${label}”: 开启 ${on} 个，关闭 ${off} 个 (可节省约 ${tok} 个常驻 token)。要继续吗？`,
+    prRun: (i: number, n: number) => `应用中… ${i}/${n}`,
+    prDone: (n: number) => `已更改 ${n} 个。下次启动 Claude Code 时生效。`,
+    prNote: '“其他”分组和本插件自身不会被改动。',
+    unTitle: '未使用的插件',
+    unDays: (n: number) => `${n} 天标准`,
+    unLearning: (d: number, n: number) => `正在收集使用记录 (第 ${d} 天)。满 ${n} 天后，会告诉你哪些插件没有被使用。`,
+    unNone: (n: number) => `所有已开启的插件在最近 ${n} 天内都用过。`,
+    unNever: '没有使用记录',
+    unAgo: (d: number) => `${d} 天前最后一次使用`,
+    unOffAll: (n: number) => `关闭全部 ${n} 个未使用的插件`,
+    unOffAllSave: (n: number, t: string) => `关闭全部 ${n} 个未使用的插件 (可节省约 ${t} 个 token)`,
+    unNote: '只在这台电脑上保存插件名称、最后一次使用的时间和次数。刚安装的插件可能只是还没用到；另外，不需要被调用就起作用的插件 (例如主题) 可能看起来像是没被使用，所以请确认后再关闭。',
+    tokAlways: (t: string) => `常驻约 ${t} 个 token`,
+    tokOffNote: '已关闭，所以不占用 token',
+    tokTotal: (t: string, n: number) => `${n} 个已开启的插件在每次对话中预先加载的量: 约 ${t} 个 token`,
+    tokNote: '“常驻”是对每次对话都会带上的说明文字的估算值，即使没有使用也会占用。这不是实际使用的量；关闭插件后就会减少。',
+    usTitle: '用量',
+    usFive: '5 小时',
+    usSeven: '7 天',
+    usCtx: '对话长度',
+    usCost: '本次会话',
+    usResetH: (h: number, m: number) => `${h} 小时 ${m} 分钟后重置`,
+    usResetM: (m: number) => `${m} 分钟后重置`,
+    usNone: '暂时没有用量信息。第一次回复结束后会显示。',
+    usNote: '这是 Claude Code 报告的百分比。准确的 token 数量并未公开。',
+    usAdvMid: '已经用了一半以上。轻量的工作可以在分工中交给 Haiku，以节省用量。',
+    usAdvHigh: '接近上限了。大的任务请推迟到重置之后，或用 Haiku 和较低的 token 额度来运行。',
+    usAdvFull: '几乎用完了。请等到重置，或只做非常轻量的工作。',
+    usToast: (p: string) => `5 小时用量已达 ${p}%。进行大任务前，请先查看面板中的用量。`,
+    agRegFail: (label: string) => `无法注册${label}子代理。请在环境标签页中检查模型 ID。`,
+    agModel: '模型',
+    agModelCustom: '直接输入模型 ID:',
+    agRange: (min: string, max: string) => `${min} ~ ${max} (例如 150k)`,
+    agAdjusted: (min: string, max: string, v: string) => `超出了此模型允许的范围 (${min} ~ ${max})，已调整为 ${v}。`,
+    agBad: '无法识别这个值，所以没有保存。',
+    agBudget: 'token 额度',
+    agTurns: '最大轮数',
+    agNoLimit: '无限制',
+    agInherit: '与当前模型相同',
+    agUsed: (runs: number, tokens: string) => `本次会话: ${runs} 次 · ${tokens} 个 token`,
+    agOver: (label: string, used: string, budget: string) =>
+      `${label}分组已达到 token 额度 (${budget}，已用 ${used})，所以没有启动新的子代理。可以在环境标签页中提高额度。`,
+    agNone: '还没有可以分派工作的分组。在工具标签页中插件按用途分组后，会显示在这里。',
+    agLine: (model: string, budget: string, used: string) => `子代理: ${model} · 额度 ${budget} · 已用 ${used}`,
+    agLimitNote: '额度在启动新的子代理时检查。正在运行的不会被中途打断，单次的长度由“最大轮数”限制。子代理仅仅启动就要用约 6 万个 token，所以额度只接受每个模型规定范围内的值 (至少 10 万)；价格越高的模型，最大值越低。',
+    tabReco: (n: number) => (n > 0 ? `推荐 (${n})` : '推荐'),
+    recoTitle: '这些工具怎么样？',
+    recoNone: '暂时没有推荐。可以说“做一个视频”这样的话，或用 /ai-find 视频 搜索。',
+    recoTopic: (c: string, t: string) => `检测到的主题: ${c} · 搜索: ${t}`,
+    recoTopicFree: (t: string) => `搜索: ${t}`,
+    recoLocalNone: '在目录中没有找到匹配的插件。',
+    recoGithubTitle: '实时搜索 GitHub',
+    recoGithubBtn: (t: string) => `在 GitHub 上搜索更多: ${t}`,
+    recoSending: (t: string) =>
+      `点击后，会把搜索词“${t}”和上面各仓库的名称 (owner/repo) 发送给 GitHub。不会发送你的对话内容。`,
+    recoSearching: '正在搜索 GitHub…',
+    recoGhNone: '在 GitHub 上没有找到匹配的仓库。',
+    recoGhErr: (m: string) => `GitHub 搜索失败: ${m}`,
+    tier_official: '官方插件市场',
+    tier_anthropic: '已通过 Anthropic 审核',
+    tier_partner: '已审核 (合作伙伴)',
+    tier_added: '你添加的插件市场',
+    tier_listed: '已收录于目录 · 未审核',
+    tier_github: '来源未验证 (GitHub 搜索)',
+    flag_stale: '超过一年没有更新',
+    flag_fresh: '仓库创建不到 30 天',
+    flag_noLicense: '没有许可证',
+    flag_fork: '这是另一个仓库的复刻 (fork)',
+    flag_ratio: '相对于星标数，复刻数非常少。请不要轻信星标数',
+    ownerLabel: '所有者',
+    noCmd: '名称含有特殊字符，所以没有生成安装命令。请按照仓库中的说明操作。',
+    trustNote: '这些标签只是提示，并不保证安全。安装前，请确认所有者是否正确，并阅读仓库的代码以及它请求的权限。',
+    recoInstalled: '已安装',
+    recoWarn: '这个仓库没有经过审核。安装前请自行检查它的代码和权限。',
+    recoCopy: '复制安装命令',
+    recoCopied: '命令已复制。',
+    recoOpen: '打开链接',
+    recoToast: (n: number, c: string) => `针对“${c}”有 ${n} 个推荐工具 — 请查看推荐标签页`,
+    findUsage: '用法: /ai-find <你想做的事>   例如 /ai-find 视频制作',
+    findStarted: (t: string) => `正在搜索“${t}”。请查看推荐标签页。(这些搜索词也已发送给 GitHub)`,
+    cat_video: '视频',
+    cat_image: '图像',
+    cat_slides: '幻灯片',
+    cat_website: '网站',
+    cat_design: '设计',
+    cat_docs: '文档',
+    cat_audio: '音乐和语音',
+    cat_data: '图表和数据',
+    cat_testing: '测试',
+    cat_git: 'git 和 GitHub',
+    cat_db: '数据库',
+    cat_game: '游戏',
+    cat_translate: '翻译',
+    cat_marketing: '营销和社交媒体',
+    renderErr: '面板在绘制时出错了。请再试一次 /ai-tools。',
+    paneTitle: 'AI 工具',
+    cmdTools: '在面板中显示已安装的技能和插件，以及本次工作中用到的工具',
+    cmdLog: '手动记录在 Claude Code 之外使用的工具: /ai-log image-tool logo draft',
+    manualNote: '(手动记录)',
+    running: (n: string) => `正在运行 ${n}`,
+    existsGlobal: '全局文件夹中已存在同名副本',
+    unreadPath: (n: string, p: string) => `${n}: 找不到路径 (${p})`,
+    unreadEmpty: (n: string) => `${n}: 没有找到说明、技能、代理或 MCP`,
+    transStatus: (a: number, b: number, c: number, d: number) => `翻译: 界面 ${a}/${b} · 说明 ${c}/${d}`,
+    retry: '重试',
+    usage: '用法: /ai-log <工具> <做了什么>   例如 /ai-log image-tool logo draft',
+    logged: (t: string) => `已记录: ${t}`,
+  },
 }
-// ko/en 외의 언어: 영어 문구를 번역해 둔 것을 쓰고, 아직 없는 문구는 영어로 보인다
-const SENT = ['{0}', '{1}', '{2}', '{3}']
-const uiTemplates = (): Record<string, string> => {
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(UI.en as Record<string, unknown>)) {
-    if (typeof v === 'function') {
-      out[k] = k === 'tabLog' ? 'Live log ({0})' : k === 'tabReco' ? 'Suggestions ({0})' : (v as any)(...SENT)
-    }
-    else out[k] = String(v)
-  }
-  return out
-}
-const fill = (t: string, a: unknown[]) => t.replace(/\{(\d)\}/g, (_, i) => String(a[Number(i)] ?? ''))
-const uiTr: Record<string, Record<string, string>> = {}
-const uiObj: Record<string, any> = {}
-const buildUi = (L: string) => {
-  const tr = uiTr[L] ?? {}
-  const base: any = UI.en
-  const o: any = {}
-  for (const k of Object.keys(base)) {
-    const tmpl = tr[k]
-    if (typeof base[k] === 'function') {
-      o[k] = tmpl
-        ? (...a: unknown[]) => {
-            const s = fill(tmpl, a)
-            return (k === 'tabLog' || k === 'tabReco') && Number(a[0]) === 0 ? s.replace(/\s*[(（]\s*0\s*[)）]/, '') : s
-          }
-        : base[k]
-    } else {
-      o[k] = tmpl ?? base[k]
-    }
-  }
-  return (uiObj[L] = o)
-}
-const ui = (): any => (lang === 'ko' ? UI.ko : lang === 'en' ? UI.en : (uiObj[lang] ?? UI.en))
+// 화면 문구는 네 언어 모두 직접 적은 표를 쓴다 (모델 번역을 거치지 않으므로 틀이 틀어질 일이 없다)
+const ui = (): any => (UI as Record<string, any>)[lang] ?? UI.ko
 
 const srcOf = (text: string) => (/[가-힣]/.test(text) ? 'ko' : 'en')
 const tx = (text: string) => (srcOf(text) === lang ? text : (tmaps[lang]?.[text] ?? text))
 const roleOf = (c: { key: string; role: string }) =>
-  lang === 'ko' ? c.role : tx(ROLE_EN[c.key] ?? c.role)
+  lang === 'ko' ? c.role : lang === 'ja' ? (ROLE_JA[c.key] ?? c.role) : lang === 'zh' ? (ROLE_ZH[c.key] ?? c.role) : (ROLE_EN[c.key] ?? c.role)
 const catLabel = (c: { key: string; label: string }) =>
-  lang === 'ko' ? c.label : tx(LABEL_EN[c.key] ?? c.label)
+  lang === 'ko' ? c.label : lang === 'ja' ? (LABEL_JA[c.key] ?? c.label) : lang === 'zh' ? (LABEL_ZH[c.key] ?? c.label) : (LABEL_EN[c.key] ?? c.label)
 
 type Item = {
   /** 빈 문자열이면 전체(모든 폴더), 아니면 이 도구가 적용되는 폴더 경로 */
@@ -1061,57 +1554,6 @@ const ensure = ($: any): Promise<Index> => {
   return loading
 }
 
-// 화면 문구 번역: 저장된 것은 검사해서 쓰고, 없는 것만 모델로 번역한다
-const translateUi = async ($: any, L: string) => {
-  const tmpl = uiTemplates()
-  const cur: Record<string, string> = (uiTr[L] ??= {})
-  const slotsOk = (src: string, v: string) => (src.match(/\{\d\}/g) ?? []).every(p => v.includes(p))
-  // 'OK'처럼 짧은 영어가 그대로여도 정상으로 본다 (그 언어에서도 같은 표기를 쓰는 말)
-  const accept = (src: string, v: string) =>
-    slotsOk(src, v) && (looksLike(L, v) || (v === src && /^[A-Za-z .]{1,6}$/.test(src)))
-
-  // 번역은 영어 원문(s)과 함께 저장한다. 원문이 바뀌면 옛 번역을 버리고 다시 번역한다.
-  const pack = () => Object.fromEntries(Object.entries(cur).map(([k, t]) => [k, { s: tmpl[k], t }]))
-  const saved = await safe($.store.get(`ui2-${L}`))
-  if (saved && typeof saved === 'object') {
-    for (const [k, v] of Object.entries(saved as Record<string, any>)) {
-      if (k in tmpl && v && typeof v.t === 'string' && v.s === tmpl[k] && accept(tmpl[k], v.t)) cur[k] = v.t
-    }
-  }
-  buildUi(L)
-  await update($, uses, l => [...l])
-
-  const need = Object.keys(tmpl).filter(k => !cur[k])
-  for (let i = 0; i < need.length; i += 40) {
-    const chunk = need.slice(i, i + 40)
-    const r = await $.model.complete({
-      model: 'haiku',
-      effort: 'low',
-      maxTokens: 4000,
-      timeoutMs: 60000,
-      prompt:
-        `Translate each UI string in this JSON array into ${LANG_NAME[L] ?? 'English'}. ` +
-        `Keep placeholders such as {0}, {1}, {2} exactly as written. ` +
-        `Keep symbols (● ▸ ▾ ▴ ⚠ ·), slash commands such as /ai-log and /ai-tools, file paths and product names unchanged. ` +
-        `Reply with ONLY a JSON array of the same length and order.\n\n${JSON.stringify(chunk.map(k => tmpl[k]))}`,
-    })
-    if (!r.isAnswered) break
-    try {
-      const s: string = r.text
-      const out = JSON.parse(s.slice(s.indexOf('['), s.lastIndexOf(']') + 1))
-      if (Array.isArray(out) && out.length === chunk.length) {
-        chunk.forEach((k, j) => {
-          const v = out[j]
-          if (typeof v === 'string' && accept(tmpl[k], v)) cur[k] = v
-        })
-      }
-    } catch {}
-    await safe($.store.set(`ui2-${L}`, pack()))
-    buildUi(L)
-    await update($, uses, l => [...l])
-  }
-}
-
 // 다른 언어의 설명을 한 번만 번역해 저장 (저장된 건 다시 부르지 않음)
 const translateAll = async ($: any, idx: Index) => {
   // 시작할 때의 언어를 고정해서 쓴다. 번역하는 도중 언어가 바뀌어도 이 작업은 끝까지 이 언어만 다룬다.
@@ -1137,16 +1579,7 @@ const translateAll = async ($: any, idx: Index) => {
     if (it.summary) texts.add(it.summary)
     for (const c of it.children) if (c.summary) texts.add(c.summary)
   }
-  if (L !== 'ko' && L !== 'en') {
-    for (const c of CATALOG) {
-      texts.add(ROLE_EN[c.key])
-      if (LABEL_EN[c.key]) texts.add(LABEL_EN[c.key])
-    }
-  }
   const need = [...texts].filter(t => t && srcOf(t) !== L && !map[t])
-
-  // 화면 문구(버튼, 제목, 안내)도 같은 방식으로 번역한다
-  if (L !== 'ko' && L !== 'en') await translateUi($, L)
 
   for (let i = 0; i < need.length; i += 30) {
     const chunk = need.slice(i, i + 30)
@@ -1358,20 +1791,20 @@ const doToggle = async ($: any, it: Item) => {
 // ---------------------------------------------------------------------------
 type Cat = { key: string; triggers: string[]; terms: string[] }
 const CATS: Cat[] = [
-  { key: 'video', triggers: ['동영상', '영상', '비디오', 'video', 'mp4', '애니메이션', 'animation'], terms: ['video', 'remotion', 'animation', 'motion'] },
-  { key: 'image', triggers: ['이미지', '사진', '일러스트', '로고', 'image', 'logo', 'illustration'], terms: ['image', 'illustration', 'logo'] },
-  { key: 'slides', triggers: ['ppt', '슬라이드', '발표', '프레젠테이션', 'presentation', 'slides'], terms: ['slides', 'presentation', 'pptx'] },
-  { key: 'website', triggers: ['웹사이트', '홈페이지', '랜딩', '웹페이지', 'website', 'landing page'], terms: ['website', 'landing', 'frontend'] },
-  { key: 'design', triggers: ['디자인', '피그마', 'figma', 'ui', 'ux'], terms: ['design', 'figma', 'ui'] },
-  { key: 'docs', triggers: ['워드', 'docx', 'pdf', '엑셀', '스프레드시트', 'xlsx'], terms: ['pdf', 'docx', 'xlsx'] },
-  { key: 'audio', triggers: ['음악', '음성', '목소리', '자막', 'tts', 'audio', 'music', 'voice', 'caption'], terms: ['audio', 'music', 'voice', 'caption'] },
-  { key: 'data', triggers: ['차트', '그래프', '대시보드', '데이터 분석', 'chart', 'dashboard', 'analytics'], terms: ['chart', 'dashboard', 'analytics'] },
-  { key: 'testing', triggers: ['tdd', 'debug', '디버깅'], terms: ['testing', 'tdd', 'debugging'] },
-  { key: 'git', triggers: ['깃허브', 'github', '커밋', 'pull request'], terms: ['github', 'git', 'pull request'] },
-  { key: 'db', triggers: ['데이터베이스', 'sql', 'database'], terms: ['database', 'sql'] },
-  { key: 'game', triggers: ['게임', 'game'], terms: ['game'] },
-  { key: 'translate', triggers: ['번역', '다국어', 'translate', 'i18n'], terms: ['translation', 'i18n'] },
-  { key: 'marketing', triggers: ['마케팅', '유튜브', '인스타', 'seo', 'youtube', 'marketing'], terms: ['marketing', 'youtube', 'seo'] },
+  { key: 'video', triggers: ['동영상', '영상', '비디오', 'video', 'mp4', '애니메이션', 'animation', '動画', 'ビデオ', '映像', 'アニメーション', '视频', '影片', '动画'], terms: ['video', 'remotion', 'animation', 'motion'] },
+  { key: 'image', triggers: ['이미지', '사진', '일러스트', '로고', 'image', 'logo', 'illustration', '画像', '写真', 'イラスト', 'ロゴ', '图片', '图像', '插画'], terms: ['image', 'illustration', 'logo'] },
+  { key: 'slides', triggers: ['ppt', '슬라이드', '발표', '프레젠테이션', 'presentation', 'slides', 'スライド', 'プレゼン', '幻灯片', '演示文稿'], terms: ['slides', 'presentation', 'pptx'] },
+  { key: 'website', triggers: ['웹사이트', '홈페이지', '랜딩', '웹페이지', 'website', 'landing page', 'ウェブサイト', 'ホームページ', 'ランディング', 'webページ', '网站', '网页', '官网', '落地页'], terms: ['website', 'landing', 'frontend'] },
+  { key: 'design', triggers: ['디자인', '피그마', 'figma', 'ui', 'ux', 'デザイン', '设计'], terms: ['design', 'figma', 'ui'] },
+  { key: 'docs', triggers: ['워드', 'docx', 'pdf', '엑셀', '스프레드시트', 'xlsx', 'ワード', 'エクセル', 'スプレッドシート', '电子表格', '文档'], terms: ['pdf', 'docx', 'xlsx'] },
+  { key: 'audio', triggers: ['음악', '음성', '목소리', '자막', 'tts', 'audio', 'music', 'voice', 'caption', '音楽', '音声', '字幕', 'ナレーション', '音乐', '语音', '字幕', '配音'], terms: ['audio', 'music', 'voice', 'caption'] },
+  { key: 'data', triggers: ['차트', '그래프', '대시보드', '데이터 분석', 'chart', 'dashboard', 'analytics', 'グラフ', 'チャート', 'ダッシュボード', 'データ分析', '图表', '仪表盘', '数据分析'], terms: ['chart', 'dashboard', 'analytics'] },
+  { key: 'testing', triggers: ['tdd', 'debug', '디버깅', 'デバッグ', '调试'], terms: ['testing', 'tdd', 'debugging'] },
+  { key: 'git', triggers: ['깃허브', 'github', '커밋', 'pull request', 'コミット', 'プルリクエスト', '提交代码', '拉取请求'], terms: ['github', 'git', 'pull request'] },
+  { key: 'db', triggers: ['데이터베이스', 'sql', 'database', 'データベース', '数据库'], terms: ['database', 'sql'] },
+  { key: 'game', triggers: ['게임', 'game', 'ゲーム', '游戏'], terms: ['game'] },
+  { key: 'translate', triggers: ['번역', '다국어', 'translate', 'i18n', '翻訳', '多言語', '翻译', '多语言'], terms: ['translation', 'i18n'] },
+  { key: 'marketing', triggers: ['마케팅', '유튜브', '인스타', 'seo', 'youtube', 'marketing', 'マーケティング', 'インスタ', 'ユーチューブ', '营销', '推广'], terms: ['marketing', 'youtube', 'seo'] },
 ]
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // 짧은 영어는 단어 경계로 (ui가 build 안에서 걸리지 않게), 한글은 부분 일치
@@ -2132,11 +2565,8 @@ export const register: Register = (on, options) => {
     )
 
     // 번역 진행 상황: [끝난 개수, 전체 개수]
-    const uiKeys = Object.keys(uiTemplates())
-    const uiStat: [number, number] =
-      lang === 'ko' || lang === 'en'
-        ? [uiKeys.length, uiKeys.length] // 직접 적은 문구라 처음부터 모두 있다
-        : [uiKeys.filter(k => uiTr[lang]?.[k]).length, uiKeys.length]
+    const uiTotal = Object.keys(UI.en).length
+    const uiStat: [number, number] = [uiTotal, uiTotal] // 직접 적은 문구라 처음부터 모두 있다
     const descTexts = new Set<string>()
     for (const it of idx.items) {
       if (it.summary) descTexts.add(it.summary)
