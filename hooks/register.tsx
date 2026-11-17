@@ -18,6 +18,8 @@ import { attribute, bar, levelColor, levelOf, overGuard, pct, pickWindow, should
 import type { Level } from './usage'
 import { DAY_OPTIONS, DEFAULT_DAYS, emptyHistory, merge, parseHistory, record, unusedList } from './history'
 import type { History } from './history'
+import { enabledNames, isEmptyPlan, parseMine, planByCats, planByNames, PRESETS } from './presets'
+import type { Plan, PlanItem } from './presets'
 
 const PANE = 'ai-tools'
 
@@ -235,6 +237,21 @@ const UI = {
     agGuard: '사용량 보호',
     agGuardOff: '쓰지 않음',
     agGuardHint: '5시간과 주간(7일) 기준을 따로 고릅니다. 그 사용량이 정한 퍼센트 이상이면 새 하위 에이전트를 시작하지 않습니다. 둘 다 끌 수는 없습니다.',
+    prTitle: '작업 모드',
+    prHint: '지금 하려는 일에 맞는 플러그인만 켜고 나머지는 끕니다. 누르면 먼저 무엇이 바뀌는지 보여 줍니다.',
+    pr_video: '영상 작업',
+    pr_docs: '문서·기획 작업',
+    pr_web: '웹·개발 작업',
+    pr_data: '데이터 작업',
+    prMine: '내 프리셋',
+    prSave: '지금 켜진 것을 내 프리셋으로 저장',
+    prSaved: (n: number) => `켜진 플러그인 ${n}개를 내 프리셋으로 저장했습니다.`,
+    prNothing: '이미 이 모드와 같은 상태입니다.',
+    prAsk: (label: string, on: number, off: number, tok: string) =>
+      `"${label}": ${on}개를 켜고 ${off}개를 끕니다${tok ? ` (끄면 상시 약 ${tok} 토큰 절약)` : ''}. 진행할까요?`,
+    prRun: (i: number, n: number) => `적용 중… ${i}/${n}`,
+    prDone: (n: number) => `${n}개를 바꿨습니다. 다음에 Claude Code를 시작할 때부터 적용됩니다.`,
+    prNote: '"기타" 묶음과 이 플러그인 자신은 건드리지 않습니다.',
     unTitle: '안 쓴 플러그인',
     unDays: (n: number) => `${n}일 기준`,
     unLearning: (d: number, n: number) => `사용 기록을 모으는 중입니다(${d}일째). ${n}일이 지나면 안 쓴 플러그인을 알려 드립니다.`,
@@ -445,6 +462,21 @@ const UI = {
     agGuard: 'Usage protection',
     agGuardOff: 'not used',
     agGuardHint: 'Choose the 5-hour and the weekly (7-day) thresholds separately. No new sub-agent is started when that usage is at or above its percentage. You cannot turn both off.',
+    prTitle: 'Work modes',
+    prHint: 'Turns on only the plugins that fit what you are about to do and turns the rest off. It shows what will change first.',
+    pr_video: 'Video work',
+    pr_docs: 'Docs & planning',
+    pr_web: 'Web & dev',
+    pr_data: 'Data work',
+    prMine: 'My preset',
+    prSave: 'Save what is on now as my preset',
+    prSaved: (n: number) => `Saved the ${n} enabled plugins as your preset.`,
+    prNothing: 'Already the same as this mode.',
+    prAsk: (label: string, on: number, off: number, tok: string) =>
+      `"${label}": turn on ${on} and turn off ${off}${tok ? ` (saves about ${tok} always-loaded tokens)` : ''}. Go ahead?`,
+    prRun: (i: number, n: number) => `Applying… ${i}/${n}`,
+    prDone: (n: number) => `Changed ${n}. It takes effect the next time Claude Code starts.`,
+    prNote: 'The "Other" group and this plugin itself are never touched.',
     unTitle: 'Unused plugins',
     unDays: (n: number) => `${n}-day rule`,
     unLearning: (d: number, n: number) => `Collecting usage history (day ${d}). After ${n} days it will tell you which plugins went unused.`,
@@ -1611,6 +1643,32 @@ const doBulk = async ($: any, scope: string, enable: boolean, targets: Item[]) =
   }
 }
 
+// 프리셋을 적용한다: 먼저 끄고, 그다음 켠다. 하나가 실패해도 나머지는 계속하고 끝에 알려 준다.
+const doPreset = async ($: any, id: string, plan: { off: Item[]; on: Item[] }) => {
+  const list: [Item, boolean][] = [
+    ...plan.off.filter(canToggleItem).map(it => [it, false] as [Item, boolean]),
+    ...plan.on.filter(canToggleItem).map(it => [it, true] as [Item, boolean]),
+  ]
+  let done = 0
+  const failed: string[] = []
+  try {
+    for (let i = 0; i < list.length; i++) {
+      await setMove($, id, `run:${i + 1}/${list.length}`)
+      const [it, enable] = list[i]
+      const r = await $.process.run(['claude', 'plugin', enable ? 'enable' : 'disable', it.key, '--scope', 'user'], {
+        timeoutMs: 60000,
+      })
+      if (r.exitCode === 0) done++
+      else failed.push(`${it.name}: ${String(r.stderr || r.stdout || 'failed').trim().slice(0, 60)}`)
+    }
+    await setMove($, id, failed.length > 0 ? `error:${failed.join(' | ').slice(0, 200)}` : `done:${done}`)
+    await rescan($)
+    await update($, uses, l => [...l])
+  } catch (err: any) {
+    await setMove($, id, `error:${String(err?.message ?? err).slice(0, 100)}`)
+  }
+}
+
 const prepare = async ($: any) => translateAll($, await ensure($))
 
 const rescan = ($: any) => {
@@ -1688,6 +1746,7 @@ const fmt = (at: number) => {
 let hist: History = emptyHistory(Date.now())
 let histWrote = 0
 let unusedDays = DEFAULT_DAYS
+let mine: string[] = [] // 내 프리셋: 저장해 둔 켜 둘 플러그인 이름
 
 const loadHistory = async ($: any) => {
   const now = Date.now()
@@ -1695,6 +1754,7 @@ const loadHistory = async ($: any) => {
   hist = parseHistory(raw, now)
   const d = await safe($.store.get('unused-days'))
   unusedDays = DAY_OPTIONS.includes(d as number) ? (d as number) : DEFAULT_DAYS
+  mine = parseMine(await safe($.store.get('preset-mine')))
   if (raw === undefined || raw === null) await safe($.store.set('use-history', hist)) // 기록을 시작한 날을 남긴다
 }
 
@@ -2294,6 +2354,91 @@ export const register: Register = (on, options) => {
             </Box>
           )
     }
+    // 작업 모드: 목적에 맞는 묶음만 켜고 나머지는 끈다. 누르면 무엇이 바뀌는지 보여 주고 확인을 받는다
+    const presetSection = () => {
+      const pool = installed.filter(i => i.kind === 'plugin')
+      const planItems: PlanItem[] = pool.map(i => ({ name: i.name, cat: i.cat, enabled: i.enabled, toggleable: canToggleItem(i) }))
+      const byName = new Map(pool.map(i => [i.name, i] as const))
+      const plans: { id: string; label: string; plan: Plan }[] = PRESETS.map(pr => ({
+        id: pr.key,
+        label: String(ui()[`pr_${pr.key}`] ?? pr.key),
+        plan: planByCats(planItems, pr.cats),
+      }))
+      if (mine.length > 0) plans.push({ id: 'mine', label: ui().prMine, plan: planByNames(planItems, mine) })
+      const busy = plans.find(x => (moveState[`preset:${x.id}`] ?? 'idle') !== 'idle')
+      const toItems = (names: string[]) => names.map(n => byName.get(n)).filter((x): x is Item => !!x)
+      const status = (x: { id: string; label: string; plan: Plan }) => {
+        const mid = `preset:${x.id}`
+        const st = moveState[mid] ?? 'idle'
+        const offItems = toItems(x.plan.off)
+        const onItems = toItems(x.plan.on)
+        if (st === 'confirm') {
+          const saved = offItems.reduce((n, i) => n + (costOf(i) ?? 0), 0)
+          return (
+            <Box flexDirection="column">
+              <Text>{ui().prAsk(x.label, onItems.length, offItems.length, saved > 0 ? fmtTokens(saved) : '')}</Text>
+              <Box gap={1}>
+                <Button key={`${mid}-yes`} label={ui().yes} onPress={() => void doPreset($, mid, { off: offItems, on: onItems })} />
+                <Button key={`${mid}-no`} label={ui().cancel} onPress={() => setMove($, mid, 'idle')} />
+              </Box>
+            </Box>
+          )
+        }
+        if (st.startsWith('run:')) {
+          const [i, n] = st.slice(4).split('/')
+          return <Text dimColor>{ui().prRun(Number(i), Number(n))}</Text>
+        }
+        if (st.startsWith('done:')) {
+          return (
+            <Box flexDirection="column">
+              <Text dimColor>{ui().prDone(Number(st.slice(5)))}</Text>
+              <Button key={`${mid}-ok`} label={ui().cacheOk} onPress={() => setMove($, mid, 'idle')} />
+            </Box>
+          )
+        }
+        if (st.startsWith('error:')) {
+          return (
+            <Box flexDirection="column">
+              <Text>⚠ {st.slice(6)}</Text>
+              <Button key={`${mid}-retry`} label={ui().retry} onPress={() => setMove($, mid, 'idle')} />
+            </Box>
+          )
+        }
+        return null
+      }
+      return (
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold>{ui().prTitle}</Text>
+          <Text dimColor>{ui().prHint}</Text>
+          {busy ? (
+            status(busy)
+          ) : (
+            <Box flexDirection="column">
+              <Box gap={1}>
+                {plans.map(x => (
+                  <Button
+                    key={`preset-${x.id}`}
+                    label={x.label}
+                    onPress={() => (isEmptyPlan(x.plan) ? $.ui.toast(ui().prNothing) : void setMove($, `preset:${x.id}`, 'confirm'))}
+                  />
+                ))}
+              </Box>
+              <Button
+                key="preset-save"
+                label={ui().prSave}
+                onPress={() => {
+                  mine = enabledNames(planItems)
+                  void safe($.store.set('preset-mine', mine))
+                  $.ui.toast(ui().prSaved(mine.length))
+                  void setMove($, '__mine', String(mine.length))
+                }}
+              />
+            </Box>
+          )}
+          <Text dimColor>{ui().prNote}</Text>
+        </Box>
+      )
+    }
     // 안 쓴 플러그인: 켜 둔 것 중 정한 기간 동안 한 번도 안 쓰인 것. 상시 토큰과 함께 보여주고 바로 끌 수 있다
     const unusedSection = () => {
       const pool = installed.filter(i => i.kind === 'plugin' && i.enabled && canToggleItem(i))
@@ -2468,6 +2613,7 @@ export const register: Register = (on, options) => {
             {sub !== 'skills' && bulkButtons('all', visible)}
             {sub !== 'skills' && bulkStatus('all', visible)}
             <Text> </Text>
+            {sub !== 'skills' && presetSection()}
             {sub !== 'skills' && unusedSection()}
             {shownEntries.map(en => (en.type === 'header' ? headerRow(en.cat, en.items) : renderRow(en.it)))}
           </Box>
