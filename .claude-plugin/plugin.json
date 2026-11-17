@@ -1,6 +1,6 @@
 {
   "name": "ai-tool-tracker",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Live panel of the skills, plugins, MCP servers and subagents used while you work, with a one-line description of what each is for. 작업 중 쓰인 도구를 실시간으로 보여주고 주 종목을 설명합니다.",
   "types": "./types/index.d.ts",
   "userConfig": {

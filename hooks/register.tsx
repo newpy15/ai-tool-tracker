@@ -23,6 +23,8 @@ import {
   planByCats, planByNames, PRESETS, renameCustom, replaceMembers, toggleMember,
 } from './presets'
 import type { Custom, Plan, PlanItem } from './presets'
+import { buildAppPlugin, parseManifest, safePluginId, safeSegment } from './appstore'
+import type { AppPlugin } from './appstore'
 
 const PANE = 'ai-tools'
 
@@ -276,6 +278,11 @@ const UI = {
     agGuard: '사용량 보호',
     agGuardOff: '쓰지 않음',
     agGuardHint: '5시간과 주간(7일) 기준을 따로 고릅니다. 그 사용량이 정한 퍼센트 이상이면 새 하위 에이전트를 시작하지 않습니다. 둘 다 끌 수는 없습니다.',
+    appTitle: (n: number) => `Claude 앱 플러그인 (${n}개)`,
+    appHint: '클로드 앱(대화·Cowork)에 설치된 플러그인입니다. 앱이 관리하므로 여기서 켜고 끌 수 없고, 위의 Claude Code 플러그인과는 따로 저장됩니다. 이 플러그인들이 Claude Code 세션에서 쓰이는지는 확인되지 않았고, 토큰 어림값도 붙이지 않았습니다.',
+    appBadge: '앱',
+    appMcp: 'MCP 연결 있음',
+    envApp: (n: number) => `Claude 앱 플러그인: ${n}개 (읽기 전용)`,
     tabMode: '작업 모드',
     prTitle: '작업 모드',
     prHint: '지금 하려는 일에 맞는 플러그인만 켜고 나머지는 끕니다. 누르면 먼저 무엇이 바뀌는지 보여 주고 확인을 받습니다.',
@@ -521,6 +528,11 @@ const UI = {
     agGuard: 'Usage protection',
     agGuardOff: 'not used',
     agGuardHint: 'Choose the 5-hour and the weekly (7-day) thresholds separately. No new sub-agent is started when that usage is at or above its percentage. You cannot turn both off.',
+    appTitle: (n: number) => `Claude app plugins (${n})`,
+    appHint: 'Plugins installed in the Claude app (chat and Cowork). The app manages them, so they cannot be switched on or off here, and they are stored apart from the Claude Code plugins above. Whether they are used in a Claude Code session has not been confirmed, so no token estimate is shown.',
+    appBadge: 'app',
+    appMcp: 'has an MCP connection',
+    envApp: (n: number) => `Claude app plugins: ${n} (read only)`,
     tabMode: 'Work modes',
     prTitle: 'Work modes',
     prHint: 'Turns on only the plugins that fit what you are about to do and turns the rest off. It shows what will change and asks first.',
@@ -766,6 +778,11 @@ const UI = {
     agGuard: '使用量の保護',
     agGuardOff: '使わない',
     agGuardHint: '5時間と週間(7日)の基準を別々に選びます。その使用量が設定した割合以上のときは、新しいサブエージェントを開始しません。両方をオフにすることはできません。',
+    appTitle: (n: number) => `Claudeアプリのプラグイン (${n}件)`,
+    appHint: 'Claudeアプリ(チャットとCowork)にインストールされたプラグインです。アプリが管理しているため、ここではオン/オフできず、上のClaude Codeのプラグインとは別に保存されています。これらがClaude Codeのセッションで使われるかは確認できておらず、トークンの概算も表示していません。',
+    appBadge: 'アプリ',
+    appMcp: 'MCP接続あり',
+    envApp: (n: number) => `Claudeアプリのプラグイン: ${n}件 (読み取り専用)`,
     tabMode: '作業モード',
     prTitle: '作業モード',
     prHint: 'これから行う作業に合うプラグインだけをオンにして、残りをオフにします。変更内容を先に表示して確認します。',
@@ -1011,6 +1028,11 @@ const UI = {
     agGuard: '用量保护',
     agGuardOff: '不使用',
     agGuardHint: '5 小时和每周 (7 天) 的阈值分别选择。当对应用量达到或超过设定的百分比时，不会启动新的子代理。不能同时关闭两项。',
+    appTitle: (n: number) => `Claude 应用插件 (${n} 个)`,
+    appHint: '这些是安装在 Claude 应用 (对话和 Cowork) 中的插件。由应用负责管理，所以不能在这里开关，并且与上面的 Claude Code 插件分开存放。它们是否会在 Claude Code 会话中被使用尚未确认，所以不显示 token 估算值。',
+    appBadge: '应用',
+    appMcp: '含 MCP 连接',
+    envApp: (n: number) => `Claude 应用插件: ${n} 个 (只读)`,
     tabMode: '工作模式',
     prTitle: '工作模式',
     prHint: '只开启适合你接下来要做的事的插件，并关闭其余的。会先显示将要发生的更改，并征求确认。',
@@ -1249,6 +1271,54 @@ const summarize = (desc: string): string => {
   const flat = desc.replace(/\s+/g, ' ').trim()
   const first = flat.split(/(?<=[.。!?])\s/)[0] ?? flat
   return shorten(first, 60)
+}
+
+// ---------------------------------------------------------------------------
+// Claude 앱(대화·Cowork)이 자기 저장소에 설치한 플러그인: Claude Code의 설치 위치(~/.claude)와는 따로 저장된다.
+// 읽기만 하고, 켜고 끌 수는 없다. 윈도우 앱의 저장 위치(%LOCALAPPDATA%/Claude-Data/<앱>/rpm)만 확인했다.
+// ---------------------------------------------------------------------------
+let appPlugins: AppPlugin[] = []
+const readAppSkills = async ($: any, dir: string): Promise<{ name: string; summary: string }[]> => {
+  const entries: any[] = (await safe($.fs.list(dir))) ?? []
+  const out: { name: string; summary: string }[] = []
+  for (const en of entries.filter(x => x.kind !== 'file').slice(0, 60)) {
+    const seg = safeSegment(en.name)
+    if (!seg) continue
+    const text: string | undefined = await safe($.fs.read(`${dir}/${seg}/SKILL.md`))
+    if (!text) continue
+    const fm = parseFront(text)
+    out.push({ name: fm.name ?? seg, summary: fm.description ?? '' })
+  }
+  return out
+}
+const loadApp = async ($: any) => {
+  const la: string | undefined = await safe($.env.get('LOCALAPPDATA'))
+  const found: AppPlugin[] = []
+  if (la) {
+    const data = `${norm(la)}/Claude-Data`
+    const dirs = async (d: string): Promise<string[]> =>
+      (((await safe($.fs.list(d))) ?? []) as any[]).filter(x => x.kind !== 'file').map(x => safeSegment(x.name)).filter(Boolean)
+    for (const prof of await dirs(data)) {
+      const rpm = `${data}/${prof}/rpm`
+      for (const a of await dirs(rpm)) {
+        for (const b of await dirs(`${rpm}/${a}`)) {
+          const manifest: string | undefined = await safe($.fs.read(`${rpm}/${a}/${b}/manifest.json`))
+          if (!manifest) continue
+          for (const ref of parseManifest(manifest)) {
+            const id = safePluginId(ref.id)
+            if (!id) continue
+            const base = `${rpm}/${a}/${b}/${id}`
+            const pj: string | undefined = await safe($.fs.read(`${base}/.claude-plugin/plugin.json`))
+            const skills = await readAppSkills($, `${base}/skills`)
+            const hasMcp = !!(await safe($.fs.read(`${base}/.mcp.json`)))
+            found.push(buildAppPlugin(ref, pj, skills, hasMcp))
+          }
+        }
+      }
+    }
+  }
+  appPlugins = found.sort((x, y) => x.displayName.localeCompare(y.displayName)).slice(0, 60)
+  await update($, uses, l => [...l]) // 패널 다시 그리기
 }
 
 const scan = async ($: any): Promise<Index> => {
@@ -1575,6 +1645,10 @@ const translateAll = async ($: any, idx: Index) => {
   }
 
   const texts = new Set<string>(recoTexts) // 추천 설명도 같이 번역
+  for (const ap of appPlugins) {
+    if (ap.summary) texts.add(ap.summary)
+    for (const sk of ap.skills) if (sk.summary) texts.add(sk.summary)
+  }
   for (const it of idx.items) {
     if (it.summary) texts.add(it.summary)
     for (const c of it.children) if (c.summary) texts.add(c.summary)
@@ -2150,6 +2224,7 @@ const prepare = async ($: any) => translateAll($, await ensure($))
 const rescan = ($: any) => {
   index = undefined
   loading = undefined
+  void loadApp($).catch(() => {})
   return ensure($)
 }
 
@@ -2332,6 +2407,7 @@ export const register: Register = (on, options) => {
     void prepare($) // 설치된 스킬·플러그인 읽고, 필요하면 번역
     void loadAgents($).catch(() => {}) // 분업 설정을 불러오고, 켜져 있으면 에이전트 종류를 등록
     void loadHistory($).catch(() => {}) // 사용 기록을 불러온다
+    void loadApp($).catch(() => {}) // Claude 앱 플러그인을 읽는다 (읽기 전용)
     void $.ui.open({ id: PANE, title: ui().paneTitle })
     return next(e)
   })
@@ -3042,6 +3118,45 @@ export const register: Register = (on, options) => {
         </Box>
       )
     }
+    // Claude 앱 플러그인: 앱이 관리하는 것이라 읽기만 한다. 위의 Claude Code 플러그인과 테두리로 구분한다.
+    const appSection = () => {
+      if (appPlugins.length === 0) return null
+      const folded = !!openState['app:fold']
+      return (
+        <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="inactive" paddingX={1}>
+          <Box gap={1}>
+            <Button
+              key="app-fold"
+              label={`${folded ? '▸' : '▾'} ${ui().appTitle(appPlugins.length)}`}
+              onPress={() => update($, open, m => ({ ...m, 'app:fold': !m['app:fold'] }))}
+            />
+          </Box>
+          {!folded && <Text dimColor>{ui().appHint}</Text>}
+          {!folded &&
+            appPlugins.map(ap => {
+              const isOpen = !!openState[`app:${ap.id}`]
+              const meta = [ui().appBadge, ap.marketplace, ap.owner ? `${ui().ownerLabel}: ${ap.owner}` : '', ap.skills.length > 0 ? ui().skills(ap.skills.length).trim() : '']
+                .filter(Boolean)
+                .join(' · ')
+              return (
+                <Box flexDirection="column" marginTop={1}>
+                  <Box>
+                    <Button
+                      key={`app-${ap.id}`}
+                      label={`${isOpen ? '▾' : '▸'} ${ap.displayName}`}
+                      onPress={() => update($, open, m => ({ ...m, [`app:${ap.id}`]: !m[`app:${ap.id}`] }))}
+                    />
+                    <Text dimColor> [{meta}]</Text>
+                  </Box>
+                  <Text dimColor>{ap.summary ? tx(ap.summary) : ui().noDesc}</Text>
+                  {isOpen && ap.skills.map(sk => <Text dimColor>· {sk.name} — {sk.summary ? tx(sk.summary) : ui().noDesc}</Text>)}
+                  {isOpen && ap.hasMcp && <Text dimColor>· MCP: {ui().appMcp}</Text>}
+                </Box>
+              )
+            })}
+        </Box>
+      )
+    }
     // 안 쓴 플러그인: 켜 둔 것 중 정한 기간 동안 한 번도 안 쓰인 것. 상시 토큰과 함께 보여주고 바로 끌 수 있다
     const unusedSection = () => {
       const pool = installed.filter(i => i.kind === 'plugin' && i.enabled && canToggleItem(i))
@@ -3235,6 +3350,7 @@ export const register: Register = (on, options) => {
             onPress={() => update($, open, m => ({ ...m, __all: false }))}
           />
         )}
+        {sub !== 'skills' && appSection()}
         <Text> </Text>
           </Box>
         )}
@@ -3388,6 +3504,7 @@ export const register: Register = (on, options) => {
           {ui().envRoot}: {diag.root || '?'} ({diag.fromEnv ? 'CLAUDE_CONFIG_DIR' : 'USERPROFILE/HOME'})
         </Text>
         <Text dimColor>{ui().envCount(diag.plugins, diag.skills, diag.mcp)}</Text>
+        {appPlugins.length > 0 && <Text dimColor>{ui().envApp(appPlugins.length)}</Text>}
         <Text dimColor>
           claude CLI: {diag.cli === undefined ? '?' : diag.cli ? ui().cliOk : ui().cliNo}
         </Text>

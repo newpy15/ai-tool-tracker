@@ -50,7 +50,7 @@ So I built a panel that "shows what is used and what it costs, lets you switch o
 - **Tokens**: no model is used to scan files. A model is used only for translation and for turning a search word that is not in English into an English one (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (81 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (88 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -106,6 +106,7 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 | --- | --- |
 | See which tools were just used | the **Live log** tab |
 | Understand what a plugin does | the **Tools** tab, click its name to expand it |
+| See the plugins I installed in the Claude app (not in Claude Code) | the **Tools** tab → `Plugins`, at the bottom, in its own bordered box: **Claude app plugins** (read only; the app manages them) |
 | See roughly how many tokens each plugin costs just by being switched on | the **Tools** tab: "always ~N tokens" under each plugin and a total at the top (an estimate; turning a plugin off removes it) |
 | Find plugins I installed but never use, and switch them off | the **Tools** tab → **Unused plugins**: enabled plugins not used for 7, 14 or 30 days, each with its always-loaded tokens and a `Turn off` button (after the plugin has been tracked for that long) |
 | Switch off plugins you don't use, to cut tokens | the **Tools** tab → the `Turn off` button on the plugin's row (see "Cautions" below) |
@@ -146,11 +147,12 @@ ai-tool-tracker is a Claude Code plugin made of one hooks module. It **watches**
 | Trust rules | `hooks/trust.ts` | Pure functions that clean text written by other people, make safe names, commands and links, decide the source tier, raise caution flags, and rank suggestions by relevance and stars. No Claude Code needed to test them. |
 | Division of work | `hooks/agents.ts` | Pure functions for the per-group sub-agents: settings checks, safe agent definitions (only verified plugin names, never text written by others), token counting and the budget rule. |
 | Work modes | `hooks/presets.ts` | Pure functions that plan a work mode: which plugins to turn on and which to turn off for a purpose, never touching the "Other" group or this plugin. It only plans; the panel does the switching after you confirm. |
+| Claude app plugins | `hooks/appstore.ts` | Pure functions that read the plugins the Claude app keeps in its own store: they clean names, descriptions and addresses written by other people and only take the owner from a `github.com` address. |
 | Usage history | `hooks/history.ts` | Pure functions for the "unused plugins" list: recording, merging and cleaning the history (plugin name, last use, count) and deciding what counts as unused. |
 | Usage | `hooks/usage.ts` | Pure functions for the usage bars: percentage clean-up, level (ok / over half / near the limit), the text bar, time to reset. |
 | Categories | `hooks/categories.ts` | Pure functions that group plugins and skills by purpose (video, captions & voice, planning & docs, ...) from the words in their names and descriptions. |
 | State types | `types/index.d.ts` | The shape of what the panel keeps (log, tabs, suggestions). |
-| Tests | `test/trust.test.mjs`, `test/categories.test.mjs`, `test/agents.test.mjs`, `test/usage.test.mjs`, `test/history.test.mjs`, `test/presets.test.mjs` | The safety, ranking, category, sub-agent, usage, history and work-mode rules, run with `node --test test/`. |
+| Tests | `test/trust.test.mjs`, `test/categories.test.mjs`, `test/agents.test.mjs`, `test/usage.test.mjs`, `test/history.test.mjs`, `test/presets.test.mjs`, `test/appstore.test.mjs` | The safety, ranking, category, sub-agent, usage, history, work-mode and app-plugin rules, run with `node --test test/`. |
 | Install files | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | What `claude plugin install … --marketplace newpy15/ai-tool-tracker` reads. |
 
 ### What each hook does
@@ -264,6 +266,7 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 - **Division of work protects your usage limit.** You choose the 5-hour and the weekly (7-day) thresholds separately (80% each by default, 10-100% in steps of 10, or "not used" for one of them, but not both); a new sub-agent is not started when a usage you chose is at or above its threshold, and at most 4 are started per request, so one "make a video" cannot launch many at once. Even so, a single run that is already going is not cut off, so keep the budget and max turns low. This lowers the risk of burning through your limit, it does not remove it.
 - **"always ~N tokens" is not what a plugin used.** It is Claude Code's estimate of the descriptions loaded into every conversation. What a plugin actually used while working cannot be separated out, because everything shares one conversation.
 - **The Usage bars are what Claude Code reports, as percentages.** The exact token count of your 5-hour limit is not published, so this plugin shows no token number for it. Past 60% it suggests handing light work to Haiku, and past 80% and 95% it warns once. It only reads the figures; it costs nothing and sends nothing.
+- **Claude app plugins are shown apart and cannot be switched here.** The Claude app (chat and Cowork) installs plugins into its own store, separate from Claude Code's. They are listed in a bordered box labelled "app" with their marketplace and owner, so they are not mixed up with the plugins from marketplaces or GitHub that Claude Code loads. Whether they are used in a Claude Code session has not been confirmed, so no token estimate is shown for them.
 - **Division of work is off by default.** Turning it on adds one line per group to the agent list the model reads every turn (a small token cost). Each model has its own default, minimum and maximum for the budget and max turns (the budget is at least 100k, because a sub-agent uses about 60k tokens just to start; pricier models have a lower maximum; "no limit" is not allowed), so one run cannot use up the whole budget. The token budget is checked when a new sub-agent starts; one that is already running is not cut off, its length is limited by "Max turns". Usage is counted for this session only, and only from the sub-agents this plugin defines.
 - **`Turn all off` and `Turn this group off` ask for confirmation first**, never switch off this plugin itself, and take effect the next time Claude Code starts. Turning plugins back on works the same way.
 - **Stars measure popularity, not quality.** Star counts can be inflated, and a popular tool can still be the wrong one for you. Read the description and check the owner. A repository with few stars is not necessarily bad, it just has little evidence behind it.
@@ -272,7 +275,7 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 
 ## What does it do on my computer? (written out openly)
 
-**What it reads**: the install records, skill files, settings, the plugin directory cache and the list of known projects in Claude's config folder (`~/.claude`, or wherever `CLAUDE_CONFIG_DIR` points).
+**What it reads**: the install records, skill files, settings, the plugin directory cache and the list of known projects in Claude's config folder (`~/.claude`, or wherever `CLAUDE_CONFIG_DIR` points). On Windows it also reads, read only, the plugin list that the Claude app keeps in its own folder (`%LOCALAPPDATA%\Claude-Data\...\rpm`: the manifest, each plugin's `plugin.json`, skill descriptions and whether it has an MCP connection). Other systems keep that store elsewhere and have not been checked.
 
 **What goes out over the internet**
 - GitHub: **only when you press a button in the Suggestions tab or type `/ai-find`**, one search word such as `video` and, for the star check, the public names (`owner/repo`) of the repositories being suggested go to `api.github.com`. Your conversation and login information are not sent.
