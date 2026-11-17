@@ -38,7 +38,7 @@ So I built a panel that "shows what is used and what it costs, lets you switch o
 1. **See what is used.** A live log of the plugins, skills, MCP tools and sub-agents used while you work, each with a one-line description, plus **Unused plugins**: enabled plugins you have not used for 7, 14 or 30 days.
 2. **Cut what costs tokens.** Installed plugins load their descriptions into every conversation. The panel shows roughly how many tokens each plugin costs ("always ~N tokens"), your 5-hour and 7-day usage, and lets you switch plugins off one by one, by group or all at once, or pick a **work mode** that keeps on only what fits the job.
 
-**Also**: it suggests tools for what you want to build, showing stars, source tier and owner, and it groups your plugins by purpose (video, captions, planning, dev ...).
+**Also**: it suggests tools for what you want to build, showing stars, source tier and owner; it groups your plugins by purpose (video, captions, planning, dev ...); and it lists the plugins you installed in the **Claude app** in their own read-only `Claude app` section, apart from the Claude Code ones. The screens are available in Korean, English, Japanese and Chinese.
 
 **Advanced, off by default**: *Division of work* hands each group's work to its own sub-agent with its own model and token budget. It adds a little to every turn, so it is not part of the basic flow.
 
