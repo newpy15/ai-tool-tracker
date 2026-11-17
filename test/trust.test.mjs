@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   clean, safeName, safeRepo, repoFromUrl, githubLink, ownerOf,
-  tierFromReview, tierRank, githubFlags, rankRecos, isLowStars, mergeRecos, relevance,
+  tierFromReview, tierRank, githubFlags, rankRecos, isLowStars, mergeRecos, relevance, termHit,
 } from '../hooks/trust.ts'
 
 test('safeName: 명령에 쓸 수 있는 이름만 통과', () => {
@@ -191,4 +191,22 @@ test('githubFlags: 주의 신호', () => {
   assert.deepEqual(githubFlags({ ...base, stargazers_count: 100000, forks_count: 10 }, now), ['ratio'])
   assert.deepEqual(githubFlags({ ...base, stargazers_count: 400, forks_count: 0 }, now), []) // 별이 적으면 비율을 보지 않는다
   assert.deepEqual(githubFlags({}, now), ['noLicense']) // 값이 비어도 깨지지 않는다
+})
+
+test('termHit: 짧은 검색어는 낱말 전체로, 긴 검색어는 부분 일치로', () => {
+  assert.equal(termHit('ui-theme-designer', 'ui'), true)
+  assert.equal(termHit('Rayden UI Design Skill', 'ui'), true)
+  assert.equal(termHit('GUIDE Instructional Design', 'ui'), false) // guide 안의 ui는 아니다
+  assert.equal(termHit('build quick suite', 'ui'), false)
+  assert.equal(termHit('frontend-design', 'design'), true)
+  assert.equal(termHit('UI Designer', 'design'), true) // 긴 검색어는 변형도 맞는다
+  assert.equal(termHit('anything', ''), false)
+  assert.equal(termHit('AI agents', 'ai'), true)
+  assert.equal(termHit('maintain mail', 'ai'), false)
+})
+
+test('relevance: 짧은 검색어(ui)가 guide 같은 낱말 속에서 맞지 않는다', () => {
+  assert.equal(relevance('GUIDE Instructional Design', 'Teaching guide', ['ui']), 0)
+  assert.equal(relevance('ui-kit', 'Components', ['ui']), 3)
+  assert.equal(relevance('frontend-design', 'Frontend design skill for UI/UX implementation', ['design', 'figma', 'ui']), 3)
 })

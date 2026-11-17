@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { RecoGroup, RecoItem, RecoState, Use } from '../types'
 import {
   clean, githubFlags, githubLink, isLowStars, mergeRecos, ownerOf, rankRecos, relevance, repoFromUrl, safeName,
-  safeRepo, tierBonus, tierFromReview, tierRank,
+  safeRepo, termHit, tierBonus, tierFromReview, tierRank,
 } from './trust'
 import type { Tier } from './trust'
 import { categorize, CATEGORY_ORDER } from './categories'
@@ -1979,8 +1979,8 @@ const searchLocal = (entries: DirEntry[], terms: string[], installed: Set<string
   for (const e of entries) {
     let s = 0
     for (const t of ts) {
-      if (e.lname.includes(t)) s += 3
-      if (e.lsum.includes(t)) s += 1
+      if (termHit(e.lname, t)) s += 3 // 짧은 검색어(ui 등)는 낱말 전체로 맞아야 한다
+      if (termHit(e.lsum, t)) s += 1
     }
     if (s > 0) scored.push({ e, s })
   }
@@ -2005,7 +2005,7 @@ const runGroups = async ($: any, specs: { cat: string; terms: string[] }[]): Pro
   const groups: RecoGroup[] = specs.map(s => ({
     cat: s.cat,
     terms: s.terms,
-    local: searchLocal(entries, s.terms, installed, specs.length > 1 ? 4 : 6),
+    local: searchLocal(entries, s.terms, installed, specs.length > 1 ? 10 : 12),
     github: [],
     ghStatus: 'idle',
     starsStatus: 'idle',

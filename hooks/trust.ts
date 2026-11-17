@@ -95,6 +95,18 @@ export type Reco = {
 export const MIN_REL = 2
 
 /**
+ * 검색어가 글 안에 있는지. 3글자 이하의 짧은 검색어(ui, ux, ai ...)는 낱말 전체로 맞아야 한다:
+ * 그냥 "들어 있는지"로 보면 "guide", "build", "quick" 안의 "ui"까지 걸려 관련 없는 것이 잔뜩 앞에 선다.
+ * 긴 검색어(design, video ...)는 "designer" 같은 변형도 맞아야 하므로 부분 일치로 둔다. 둘 다 소문자로 비교한다.
+ */
+export const termHit = (text: string, term: string): boolean => {
+  const t = term.toLowerCase()
+  if (!t) return false
+  const x = text.toLowerCase()
+  return t.length <= 3 ? x.split(/[^a-z0-9]+/).includes(t) : x.includes(t)
+}
+
+/**
  * 검색어와 얼마나 맞는지:
  *  - 3점: 이름이나 저장소가 스스로 붙인 주제(topics)에 검색어가 있다 (만든 사람이 그 일을 한다고 밝힌 것)
  *  - 2점: 설명 앞부분(100자)에 있다
@@ -103,13 +115,11 @@ export const MIN_REL = 2
  * 예: "PDF"를 입력 파일 형식 중 하나로만 언급하는 코드 분석 도구가, 별이 많다는 이유로 PDF 도구 1위가 되지 않게 한다.
  */
 export const relevance = (name: string, description: string, terms: string[], topics: string[] = []): number => {
-  const n = name.toLowerCase()
   const d = description.toLowerCase()
-  const tp = topics.map(t => t.toLowerCase())
   const ts = terms.map(t => t.toLowerCase()).filter(Boolean)
-  if (ts.some(t => n.includes(t) || tp.some(x => x.includes(t)))) return 3
-  if (ts.some(t => d.slice(0, 100).includes(t))) return 2
-  if (ts.some(t => d.includes(t))) return 1
+  if (ts.some(t => termHit(name, t) || topics.some(x => termHit(x, t)))) return 3
+  if (ts.some(t => termHit(d.slice(0, 100), t))) return 2
+  if (ts.some(t => termHit(d, t))) return 1
   return 0
 }
 

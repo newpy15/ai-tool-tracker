@@ -50,7 +50,7 @@ So I built a panel that "shows what is used and what it costs, lets you switch o
 - **Tokens**: no model is used to scan files. A model is used only for translation and for turning a search word that is not in English into an English one (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (88 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (90 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -295,7 +295,7 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 - **Suggestions depend on the plugin directory file stored on your PC (`plugin-directory-cache-v2.json`).** If the file is missing or renamed, it searches only the marketplaces you added. GitHub search works either way.
 - Suggestions recognize topics with a word dictionary. A topic that is not in the dictionary can be missed (then use `/ai-find what you want`), and a high star count does not mean a good tool.
 - **The source tier and caution flags are decided only from values in the directory record and the GitHub response.** It does not read the repository code to check that it is safe. A correct owner name does not mean the code is safe.
-- GitHub search is used without logging in, so it is limited to 10 searches per minute. `/ai-find` uses up to 4 searches per topic (1 star check and 3 topic searches), so with three topics at once you may have to wait a minute.
+- GitHub search is used without logging in, so it is limited to 10 searches per minute. `/ai-find` uses up to 5 searches per topic (2 star checks and 3 topic searches), so with three topics at once you may have to wait a minute.
 - A topic is recognized by a dictionary and relevance is judged from the words in names, descriptions and repository topics. A repository that does the job but describes it in other words can be ranked lower.
 - Translation quality depends on the model. If you find an awkward translation, please tell me.
 
