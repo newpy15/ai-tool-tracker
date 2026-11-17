@@ -29,10 +29,7 @@ These came from real use of the panel, from the tests, or from reading my own co
 - **Usage**: 5-hour and 7-day bars with the time to reset, advice, and a warning that appears once. Usage protection with separate 5-hour and weekly thresholds in steps of 10%. / **사용량** 막대, 안내, 한 번만 뜨는 경고, 5시간·주간 따로 10% 단위 보호
 - **Estimated "always loaded" tokens per plugin**, so you can see what switching one off saves. / 플러그인마다 **상시 토큰 어림값**
 - Roomier spacing in the panel. / 패널 간격을 넉넉하게
-- **Unused plugins**: a usage history kept across sessions (name, last use, count) and a list of plugins unused for 7, 14 or 30 days with their always-loaded tokens. / **안 쓴 플러그인** 목록과 세션 사이에 남는 사용 기록
-- **Work modes tab**: built-in modes and personal presets you can create, edit, rename and delete. / **작업 모드** 탭: 기본 모드와 만들고 고치고 지울 수 있는 내 프리셋
-- **Company mode**: companies with departments (design, planning, dev, security, legal, general affairs, office, service), each a sub-agent with its own model and budget. / **회사 모드**: 부서마다 모델·한도가 있는 하위 에이전트
-- 83 tests. / 시험 83개
+- 55 tests, covering safety, ranking, categories, sub-agents and usage. / 시험 55개
 
 ## Known limits / 알려진 한계
 
