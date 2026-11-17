@@ -53,7 +53,7 @@ So I built a panel that "shows what is used and what it costs, lets you switch o
 - **Tokens**: no model is used to scan files. A model is used only for translation and for turning a search word that is not in English into an English one (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (91 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (95 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -72,7 +72,7 @@ claude plugin install ai-tool-tracker --marketplace newpy15/ai-tool-tracker
 `/plugin` does not work in the desktop app, so there: click **+** next to the input box → **Plugins** → **Add marketplace**, enter `newpy15/ai-tool-tracker` → **Add plugin**.
 
 - When asked "Add marketplace?" answer `y`. For the scope, the first one (user) is usually right.
-- Right after installing you may see a note that "2 settings (language, minimum stars) are not set yet". It works with the defaults (Korean, 10 stars), so you can leave them, and you can change both later in the **Environment** tab of the panel.
+- Right after installing you may see a note that "3 settings (language, minimum stars, open at start) are not set yet". It works with the defaults (Korean, 10 stars, the panel opens at start), so you can leave them, and you can change all of them later in the **Environment** tab of the panel.
 - It becomes active as soon as it is installed. If you don't see the panel, type `/ai-tools` in the input box. If it still doesn't show up, quit Claude Code completely and start it again.
 
 ### Say what you want to build
@@ -97,7 +97,7 @@ The panel notices the topics (video, documents) and lists matching tools in the 
 ### Your first 5 minutes
 
 1. **Install**: install it as described above.
-2. **Open the panel**: the panel opens automatically when you start. If you don't see it, type `/ai-tools`.
+2. **Open the panel**: the panel opens automatically when you start. If you don't see it, type `/ai-tools`. If it gets in the way (it opens in every project, because the plugin is installed for your whole user), turn off **Open the panel at start** in the **Environment** tab; then it opens only when you type `/ai-tools`.
 3. **Look at the Tools tab**: switch between the `Plugins` and `Skills` buttons and read what is installed on your PC and what each item does. Click a name to expand what is inside.
 4. **Work as usual**: while you work, open the **Live log** tab to see the tools that were just used, stacked by kind.
 5. **Cut tokens**: in the **Tools** tab look at "always ~N tokens" under each plugin and at **Unused plugins**, and switch off what you don't need. The unused list fills in after the plugin has watched your work for 7, 14 or 30 days.

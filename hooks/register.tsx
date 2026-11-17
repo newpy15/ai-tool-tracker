@@ -86,6 +86,7 @@ const CATALOG: Entry[] = [
 // 설명 문구는 언어가 다르면 모델로 한 번 번역해 저장해 둔다.
 // ---------------------------------------------------------------------------
 let lang = 'ko'
+let autoOpen = true // 시작할 때 패널을 저절로 열지 (환경 탭에서 바꿀 수 있다)
 let minStars = 10 // 이보다 별이 적고 검토되지 않은 것은 추천하지 않는다 (환경 탭에서 바꿀 수 있다)
 // 번역 저장소: 언어마다 따로 둔다. (하나를 같이 쓰면 언어를 바꾸는 사이 다른 언어 결과가 섞인다)
 const tmaps: Record<string, Record<string, string>> = {}
@@ -343,6 +344,8 @@ const UI = {
     usAdvFull: '거의 다 썼습니다. 초기화될 때까지 기다리거나 아주 가벼운 일만 하세요.',
     usToast: (p: string) => `5시간 사용량이 ${p}%입니다. 큰 작업 전에 패널의 사용량을 확인하세요.`,
     agRegFail: (label: string) => `${label} 하위 에이전트를 등록하지 못했습니다. 모델 ID가 맞는지 환경 탭에서 확인하세요.`,
+    openLabel: '시작할 때 패널 열기',
+    openHint: '끄면 Claude Code를 시작해도 패널이 저절로 열리지 않고, /ai-tools를 입력했을 때만 열립니다. 바꾸면 다음에 시작할 때부터 적용됩니다.',
     agModel: '모델',
     agModelCustom: '모델 ID 직접 입력:',
     agRange: (min: string, max: string) => `${min} ~ ${max} (예: 150k)`,
@@ -594,6 +597,8 @@ const UI = {
     usAdvFull: 'Almost used up. Wait for the reset or do only very light work.',
     usToast: (p: string) => `5-hour usage is ${p}%. Check Usage in the panel before big jobs.`,
     agRegFail: (label: string) => `Could not register the ${label} sub-agent. Check the model ID in the Environment tab.`,
+    openLabel: 'Open the panel at start',
+    openHint: 'When off, the panel does not open by itself when Claude Code starts; it opens only when you type /ai-tools. The change applies from the next start.',
     agModel: 'Model',
     agModelCustom: 'Custom model ID:',
     agRange: (min: string, max: string) => `${min} to ${max} (e.g. 150k)`,
@@ -845,6 +850,8 @@ const UI = {
     usAdvFull: 'ほぼ使い切りました。リセットまで待つか、ごく軽い作業だけにしてください。',
     usToast: (p: string) => `5時間の使用量が${p}%です。大きな作業の前に、パネルの使用量を確認してください。`,
     agRegFail: (label: string) => `${label}のサブエージェントを登録できませんでした。環境タブでモデルIDを確認してください。`,
+    openLabel: '起動時にパネルを開く',
+    openHint: 'オフにすると、Claude Codeを起動してもパネルは自動で開かず、/ai-tools と入力したときだけ開きます。変更は次回の起動から有効です。',
     agModel: 'モデル',
     agModelCustom: 'モデルIDを直接入力:',
     agRange: (min: string, max: string) => `${min} ~ ${max} (例: 150k)`,
@@ -1096,6 +1103,8 @@ const UI = {
     usAdvFull: '几乎用完了。请等到重置，或只做非常轻量的工作。',
     usToast: (p: string) => `5 小时用量已达 ${p}%。进行大任务前，请先查看面板中的用量。`,
     agRegFail: (label: string) => `无法注册${label}子代理。请在环境标签页中检查模型 ID。`,
+    openLabel: '启动时打开面板',
+    openHint: '关闭后，启动 Claude Code 时面板不会自动打开，只有输入 /ai-tools 时才会打开。更改从下次启动起生效。',
     agModel: '模型',
     agModelCustom: '直接输入模型 ID:',
     agRange: (min: string, max: string) => `${min} ~ ${max} (例如 150k)`,
@@ -2428,6 +2437,7 @@ export const register: Register = (on, options) => {
   lang = typeof picked === 'string' && LANG_NAME[picked] ? picked : 'ko'
   const ms = parseInt(String((options as any)?.minStars ?? '10'), 10)
   minStars = [0, 10, 30, 100].includes(ms) ? ms : 10
+  autoOpen = String((options as any)?.autoOpen ?? 'yes') !== 'no'
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -2443,7 +2453,7 @@ export const register: Register = (on, options) => {
     void loadAgents($).catch(() => {}) // 분업 설정을 불러오고, 켜져 있으면 에이전트 종류를 등록
     void loadHistory($).catch(() => {}) // 사용 기록을 불러온다
     void loadApp($).catch(() => {}) // Claude 앱 플러그인을 읽는다 (읽기 전용)
-    void $.ui.open({ id: PANE, title: ui().paneTitle })
+    if (autoOpen) void $.ui.open({ id: PANE, title: ui().paneTitle }) // 끄면 /ai-tools를 입력했을 때만 열린다
     return next(e)
   })
 
@@ -3425,6 +3435,22 @@ export const register: Register = (on, options) => {
           ))}
         </Box>
         <Text dimColor>{ui().minStarsHint}</Text>
+        <Box gap={1} marginTop={1}>
+          <Text dimColor>{ui().openLabel}: </Text>
+          {(['yes', 'no'] as const).map(v => {
+            const cur = (v === 'yes') === autoOpen
+            const name = v === 'yes' ? ui().on : ui().off
+            return (
+              <Button
+                key={`open-${v}`}
+                label={cur ? `● ${name}` : name}
+                variant={cur ? 'primary' : undefined}
+                onPress={() => void $.config.set({ key: 'ai-tool-tracker.autoOpen', value: v })}
+              />
+            )
+          })}
+        </Box>
+        <Text dimColor>{ui().openHint}</Text>
         <Text> </Text>
         <Text bold>{ui().agTitle}</Text>
         <Text dimColor>{ui().agHint}</Text>

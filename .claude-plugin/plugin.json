@@ -1,6 +1,6 @@
 {
   "name": "ai-tool-tracker",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "description": "Live panel of the skills, plugins, MCP servers and subagents used while you work, with a one-line description of what each is for. 작업 중 쓰인 도구를 실시간으로 보여주고 주 종목을 설명합니다.",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -9,14 +9,34 @@
       "title": "Language / 언어",
       "description": "Language for tool descriptions in the panel. Screens are written by hand in all four. Descriptions of other plugins are translated once by the session's model and cached.",
       "default": "ko",
-      "options": ["ko", "en", "ja", "zh"]
+      "options": [
+        "ko",
+        "en",
+        "ja",
+        "zh"
+      ]
     },
     "minStars": {
       "type": "string",
       "title": "Minimum stars to recommend / 추천에 필요한 최소 별 개수",
       "description": "Suggestions from unreviewed sources with fewer GitHub stars than this are not recommended. 0 turns the check off. / 검토되지 않은 저장소가 이 개수보다 별이 적으면 추천하지 않습니다. 0이면 거르지 않습니다.",
       "default": "10",
-      "options": ["0", "10", "30", "100"]
+      "options": [
+        "0",
+        "10",
+        "30",
+        "100"
+      ]
+    },
+    "autoOpen": {
+      "type": "string",
+      "title": "Open the panel at start / 시작할 때 패널 열기",
+      "description": "Whether the panel opens by itself when Claude Code starts. When \"no\", type /ai-tools to open it. / 시작할 때 패널을 저절로 열지 정합니다. \"no\"이면 /ai-tools를 입력했을 때만 열립니다.",
+      "default": "yes",
+      "options": [
+        "yes",
+        "no"
+      ]
     }
   }
 }

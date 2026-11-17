@@ -39,6 +39,7 @@ These came from real use of the panel, from the tests, or from reading my own co
 - **Unused plugins**: a usage history kept across sessions (name, last use, count) and a list of plugins unused for 7, 14 or 30 days with their always-loaded tokens. / **안 쓴 플러그인** 목록과 세션 사이에 남는 사용 기록
 - **Work modes tab**: built-in modes and personal presets you can create, edit, rename and delete. / **작업 모드** 탭: 기본 모드와 만들고 고치고 지울 수 있는 내 프리셋
 - 91 tests, covering safety, ranking, categories, sub-agents, usage, history, work modes, app plugins and the four sentence tables. / 시험 91개
+- **Open the panel at start** setting (default on): turn it off in the Environment tab and the panel opens only with `/ai-tools`. A new test keeps `plugin.json` settings and the code in step. / **시작할 때 패널 열기** 설정(기본 켬): 환경 탭에서 끄면 `/ai-tools`를 입력했을 때만 열림. `plugin.json` 설정과 코드가 맞는지 확인하는 시험 추가
 - **Claude app plugins** are listed apart from Claude Code plugins, read only (Windows). / **Claude 앱 플러그인**을 Claude Code 플러그인과 구분해 읽기 전용으로 표시(윈도우)
 - **Four languages**: Korean, English, Japanese and Chinese, with automatic suggestions also reacting to Japanese and Chinese words. / **네 가지 언어**: 일본어·중국어 낱말에도 자동 추천이 반응
 
