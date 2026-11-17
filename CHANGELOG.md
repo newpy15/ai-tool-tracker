@@ -18,6 +18,9 @@ These came from real use of the panel, from the tests, or from reading my own co
 | Some plugins were put in the wrong group (for example `box` under Dev). / 일부 플러그인이 엉뚱한 묶음에 들어감(예: `box`가 개발) | The words inside skill descriptions outweighed the plugin's own name. / 스킬 설명 속 단어가 플러그인 이름보다 크게 반영됨 | The name counts most, hits from skills are capped, agent names are included. / 이름을 가장 크게, 스킬에서 온 점수는 상한, 에이전트 이름도 반영 |
 | A test found that `remotion` was given the tools of `remotion-pro`. / 시험이 `remotion`이 `remotion-pro`의 도구를 가져가는 것을 찾아냄 | Plugin names were matched as prefixes. / 플러그인 이름을 앞부분만 맞춰 비교함 | The separator (`:` or `_`) must match too. / 구분 글자(`:` 또는 `_`)까지 맞춰야 함 |
 | A sub-agent budget could be used up in one go. / 하위 에이전트 토큰 한도가 한 번에 바닥날 수 있었음 | A sub-agent uses about 60k tokens just to start; several could be started at once; cache reads were not counted. / 하위 에이전트는 시작만 해도 약 6만 토큰이 듦, 여러 개를 한꺼번에 띄울 수 있었음, 캐시 읽기를 세지 않았음 | Per-model minimum budgets (at least 100k), at most 4 sub-agents per request, cache reads counted at 10%, and a usage protection that stops new sub-agents at a threshold you choose. / 모델별 최소 한도(10만 이상), 요청당 최대 4개, 캐시 읽기를 10%로 계산, 정한 기준 이상이면 새 하위 에이전트를 막는 사용량 보호 |
+| In the other languages the reset time showed only minutes, the savings text showed an empty number, and the 80% warning showed "NaN%". / 다른 언어 화면에서 초기화까지 시간이 분만 보이고, 절약 문구에 빈 숫자가, 80% 경고에 "NaN%"가 나옴 | Translation turns each English sentence into a template by calling it with placeholders, so a sentence that changes with its numbers (`h > 0 ? ... : ...`, `Math.round(x)`) turned into the wrong template. / 번역은 영어 문구를 자리표시로 불러 틀을 만드는데, 숫자에 따라 모양이 바뀌거나 숫자를 가공하는 문구는 틀이 틀리게 만들어짐 | The sentences were split in two or the number is prepared by the caller, and a test now reads the sentence table and rejects such sentences. / 문구를 둘로 나누거나 숫자를 호출하는 쪽에서 가공하게 하고, 시험이 문구 표를 읽어 이런 문구를 막음 |
+| `/ai-find` found nothing for Japanese or Chinese words. / `/ai-find`가 일본어·중국어 검색어로는 아무것도 못 찾음 | Only Korean words were turned into English search words. / 한국어만 영어 검색어로 바꿨음 | Any word not written in English is now converted. / 영어로 쓰지 않은 검색어는 모두 바꿈 |
+| A typo in a custom model ID failed silently when registering a sub-agent. / 하위 에이전트의 모델 ID를 잘못 써도 아무 말 없이 등록에 실패함 | The failure was swallowed. / 실패를 삼켰음 | A message now says which group could not be registered. / 어느 묶음이 등록되지 않았는지 알려 줌 |
 | The mod failed validation: two `turn.complete` hooks, a variable named `on`, an `import` in the types file. / 검증 실패: `turn.complete` 훅 두 개, `on`이라는 변수, 타입 파일 속 `import` | The API allows one hook per event without a matcher, reserves `on`, and wants the contract file self-contained. / 매처 없는 훅은 이벤트당 하나, `on`은 예약어, 타입 파일은 스스로 완결되어야 함 | Hooks merged, variable renamed, types written out in the file. / 훅을 합치고, 변수 이름을 바꾸고, 타입을 파일 안에 적음 |
 
 ## Improvements / 개선한 것
@@ -31,7 +34,7 @@ These came from real use of the panel, from the tests, or from reading my own co
 - Roomier spacing in the panel. / 패널 간격을 넉넉하게
 - **Unused plugins**: a usage history kept across sessions (name, last use, count) and a list of plugins unused for 7, 14 or 30 days with their always-loaded tokens. / **안 쓴 플러그인** 목록과 세션 사이에 남는 사용 기록
 - **Work modes tab**: built-in modes and personal presets you can create, edit, rename and delete. / **작업 모드** 탭: 기본 모드와 만들고 고치고 지울 수 있는 내 프리셋
-- 75 tests, covering safety, ranking, categories, sub-agents, usage, history and work modes. / 시험 75개
+- 84 tests, covering safety, ranking, categories, sub-agents, usage, history, work modes and the sentence tables. / 시험 84개(문구 표 점검 포함)
 
 ## Known limits / 알려진 한계
 

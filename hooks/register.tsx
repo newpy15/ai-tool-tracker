@@ -266,8 +266,9 @@ const UI = {
     prOverwrite: '지금 켜진 것으로 덮어쓰기',
     prEditDone: '완료',
     prNothing: '이미 이 모드와 같은 상태입니다.',
-    prAsk: (label: string, on: number, off: number, tok: string) =>
-      `"${label}": ${on}개를 켜고 ${off}개를 끕니다${tok ? ` (끄면 상시 약 ${tok} 토큰 절약)` : ''}. 진행할까요?`,
+    prAsk: (label: string, on: number, off: number) => `"${label}": ${on}개를 켜고 ${off}개를 끕니다. 진행할까요?`,
+    prAskSave: (label: string, on: number, off: number, tok: string) =>
+      `"${label}": ${on}개를 켜고 ${off}개를 끕니다 (끄면 상시 약 ${tok} 토큰 절약). 진행할까요?`,
     prRun: (i: number, n: number) => `적용 중… ${i}/${n}`,
     prDone: (n: number) => `${n}개를 바꿨습니다. 다음에 Claude Code를 시작할 때부터 적용됩니다.`,
     prNote: '"기타" 묶음과 이 플러그인 자신은 건드리지 않습니다.',
@@ -277,7 +278,8 @@ const UI = {
     unNone: (n: number) => `최근 ${n}일 안에 켜 둔 플러그인을 모두 썼습니다.`,
     unNever: '기록된 사용 없음',
     unAgo: (d: number) => `마지막 사용 ${d}일 전`,
-    unOffAll: (n: number, t: string) => (t ? `안 쓴 ${n}개 모두 끄기 (약 ${t} 토큰 절약)` : `안 쓴 ${n}개 모두 끄기`),
+    unOffAll: (n: number) => `안 쓴 ${n}개 모두 끄기`,
+    unOffAllSave: (n: number, t: string) => `안 쓴 ${n}개 모두 끄기 (약 ${t} 토큰 절약)`,
     unNote: '플러그인 이름과 마지막 사용 시각, 횟수만 이 PC에 저장합니다. 새로 설치한 것은 아직 안 쓴 것일 수 있고, 도구를 부르지 않고 돕는 플러그인(테마 등)은 안 쓴 것처럼 보일 수 있으니 확인하고 끄세요.',
     tokAlways: (t: string) => `상시 약 ${t} 토큰`,
     tokOffNote: '꺼져 있어 토큰을 쓰지 않음',
@@ -288,13 +290,15 @@ const UI = {
     usSeven: '7일',
     usCtx: '대화 길이',
     usCost: '이번 세션',
-    usReset: (h: number, m: number) => (h > 0 ? `${h}시간 ${m}분 뒤 초기화` : `${m}분 뒤 초기화`),
+    usResetH: (h: number, m: number) => `${h}시간 ${m}분 뒤 초기화`,
+    usResetM: (m: number) => `${m}분 뒤 초기화`,
     usNone: '아직 사용량 정보가 없습니다. 첫 응답이 끝나면 나옵니다.',
     usNote: 'Claude Code가 알려 주는 퍼센트입니다. 정확한 토큰 수는 공개되지 않습니다.',
     usAdvMid: '절반 넘게 썼습니다. 가벼운 일은 분업에서 Haiku에 맡기면 아낄 수 있습니다.',
     usAdvHigh: '곧 한도입니다. 큰 작업은 초기화 뒤로 미루거나, Haiku와 낮은 토큰 한도로 돌리세요.',
     usAdvFull: '거의 다 썼습니다. 초기화될 때까지 기다리거나 아주 가벼운 일만 하세요.',
-    usToast: (p: number) => `5시간 사용량이 ${Math.round(p)}%입니다. 큰 작업 전에 패널의 사용량을 확인하세요.`,
+    usToast: (p: string) => `5시간 사용량이 ${p}%입니다. 큰 작업 전에 패널의 사용량을 확인하세요.`,
+    agRegFail: (label: string) => `${label} 하위 에이전트를 등록하지 못했습니다. 모델 ID가 맞는지 환경 탭에서 확인하세요.`,
     agModel: '모델',
     agModelCustom: '모델 ID 직접 입력:',
     agRange: (min: string, max: string) => `${min} ~ ${max} (예: 150k)`,
@@ -494,7 +498,7 @@ const UI = {
     prNewLabel: 'New preset name:',
     prNewHint: 'made from the plugins that are on now (Enter)',
     prFull: (n: number) => `You can have up to ${n} presets. Delete one you do not use first.`,
-    prCount: (n: number) => `${n}`,
+    prCount: (n: number) => `${n} plugins`,
     prSame: 'same as now',
     prApply: 'Apply',
     prEdit: 'Edit',
@@ -507,8 +511,9 @@ const UI = {
     prOverwrite: 'Overwrite with what is on now',
     prEditDone: 'Done',
     prNothing: 'Already the same as this mode.',
-    prAsk: (label: string, on: number, off: number, tok: string) =>
-      `"${label}": turn on ${on} and turn off ${off}${tok ? ` (saves about ${tok} always-loaded tokens)` : ''}. Go ahead?`,
+    prAsk: (label: string, on: number, off: number) => `"${label}": turn on ${on} and turn off ${off}. Go ahead?`,
+    prAskSave: (label: string, on: number, off: number, tok: string) =>
+      `"${label}": turn on ${on} and turn off ${off} (saves about ${tok} always-loaded tokens). Go ahead?`,
     prRun: (i: number, n: number) => `Applying… ${i}/${n}`,
     prDone: (n: number) => `Changed ${n}. It takes effect the next time Claude Code starts.`,
     prNote: 'The "Other" group and this plugin itself are never touched.',
@@ -518,7 +523,8 @@ const UI = {
     unNone: (n: number) => `Every enabled plugin was used in the last ${n} days.`,
     unNever: 'no recorded use',
     unAgo: (d: number) => `last used ${d} days ago`,
-    unOffAll: (n: number, t: string) => (t ? `Turn off all ${n} unused (saves about ${t} tokens)` : `Turn off all ${n} unused`),
+    unOffAll: (n: number) => `Turn off all ${n} unused`,
+    unOffAllSave: (n: number, t: string) => `Turn off all ${n} unused (saves about ${t} tokens)`,
     unNote: 'Only the plugin name, the time of its last use and a count are stored on this PC. A newly installed plugin may simply not have been used yet, and plugins that help without being called (themes, for example) can look unused, so check before turning one off.',
     tokAlways: (t: string) => `always ~${t} tokens`,
     tokOffNote: 'off, so it uses no tokens',
@@ -529,13 +535,15 @@ const UI = {
     usSeven: '7 days',
     usCtx: 'Conversation',
     usCost: 'This session',
-    usReset: (h: number, m: number) => (h > 0 ? `resets in ${h}h ${m}m` : `resets in ${m}m`),
+    usResetH: (h: number, m: number) => `resets in ${h}h ${m}m`,
+    usResetM: (m: number) => `resets in ${m}m`,
     usNone: 'No usage information yet. It appears after the first response.',
     usNote: 'Percentages reported by Claude Code. The exact token count is not published.',
     usAdvMid: 'You have used over half. Hand light tasks to Haiku in Division of work to save some.',
     usAdvHigh: 'Close to the limit. Put big jobs off until the reset, or run them on Haiku with a low token budget.',
     usAdvFull: 'Almost used up. Wait for the reset or do only very light work.',
-    usToast: (p: number) => `5-hour usage is ${Math.round(p)}%. Check Usage in the panel before big jobs.`,
+    usToast: (p: string) => `5-hour usage is ${p}%. Check Usage in the panel before big jobs.`,
+    agRegFail: (label: string) => `Could not register the ${label} sub-agent. Check the model ID in the Environment tab.`,
     agModel: 'Model',
     agModelCustom: 'Custom model ID:',
     agRange: (min: string, max: string) => `${min} to ${max} (e.g. 150k)`,
@@ -1850,7 +1858,8 @@ const syncAgents = async ($: any) => {
     const members = membersOf(idx, cat)
     if (members.length === 0) continue
     const spec = buildSpec(cat, String(ui()[`catg_${cat}`] ?? cat), members, cfgOf(agentSet, cat))
-    await safe($.agent.register(spec))
+    const reg = await safe($.agent.register(spec))
+    if (!reg) $.ui.toast(ui().agRegFail(String(ui()[`catg_${cat}`] ?? cat)))
   }
 }
 
@@ -1925,7 +1934,7 @@ export const register: Register = (on, options) => {
     // 주제가 여러 개면(예: "동영상과 pdf") 주제마다 묶음을 만든다
     let specs = detectCats(q.toLowerCase()).map(c => ({ cat: c.key, terms: c.terms }))
     if (specs.length === 0) {
-      let terms = HANGUL.test(q) ? await toEnglishTerms($, q) : []
+      let terms = /[^\x00-\x7f]/.test(q) ? await toEnglishTerms($, q) : []
       if (terms.length === 0) terms = q.split(/\s+/).filter(w => /^[a-z0-9.-]{2,}$/i.test(w)).slice(0, 3)
       if (terms.length > 0) specs = [{ cat: '', terms }]
     }
@@ -2033,7 +2042,7 @@ export const register: Register = (on, options) => {
       const w = pickWindow(u?.rateLimits, 'five_hour')
       if (w) {
         const lv = levelOf(w.percent)
-        if (shouldWarn(lastLevel, lv)) $.ui.toast(ui().usToast(w.percent))
+        if (shouldWarn(lastLevel, lv)) $.ui.toast(ui().usToast(String(Math.round(w.percent))))
         lastLevel = lv
       }
     }
@@ -2078,7 +2087,7 @@ export const register: Register = (on, options) => {
           <Text dimColor>{label}</Text>
           <Text color={levelColor(lv)}>{bar(w.percent)}</Text>
           <Text bold>{Math.round(w.percent)}%</Text>
-          {left && <Text dimColor>{ui().usReset(left.h, left.m)}</Text>}
+          {left && <Text dimColor>{left.h > 0 ? ui().usResetH(left.h, left.m) : ui().usResetM(left.m)}</Text>}
         </Box>
       )
     }
@@ -2430,7 +2439,7 @@ export const register: Register = (on, options) => {
           const saved = offItems.reduce((n, i) => n + (costOf(i) ?? 0), 0)
           return (
             <Box flexDirection="column" paddingLeft={2}>
-              <Text>{ui().prAsk(x.label, onItems.length, offItems.length, saved > 0 ? fmtTokens(saved) : '')}</Text>
+              <Text>{saved > 0 ? ui().prAskSave(x.label, onItems.length, offItems.length, fmtTokens(saved)) : ui().prAsk(x.label, onItems.length, offItems.length)}</Text>
               <Box gap={1}>
                 <Button key={`${mid}-yes`} label={ui().yes} onPress={() => void doPreset($, mid, { off: offItems, on: onItems })} />
                 <Button key={`${mid}-no`} label={ui().cancel} onPress={() => setMove($, mid, 'idle')} />
@@ -2641,7 +2650,7 @@ export const register: Register = (on, options) => {
           {un.ready && items.length > 0 && !bulkBusy('unused') && (
             <Button
               key="un-off-all"
-              label={ui().unOffAll(items.length, saved > 0 ? fmtTokens(saved) : '')}
+              label={saved > 0 ? ui().unOffAllSave(items.length, fmtTokens(saved)) : ui().unOffAll(items.length)}
               onPress={() => setMove($, 'bulk:unused:off', 'confirm')}
             />
           )}

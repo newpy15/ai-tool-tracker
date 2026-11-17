@@ -36,10 +36,10 @@ So I built a panel that "shows the tools you used, helps you find the ones you n
 - **Beginner-friendly**: a Korean and English screen, a one-line description for every tool, and a glossary. Japanese, Chinese, Spanish, French and German can be chosen too.
 - **Whether a suggested link can be trusted**: every suggestion shows its source tier and owner, and names, addresses and descriptions written by other people are never trusted as they are. (See "Can I trust the suggested links?" below.)
 - **Transparency**: everything it reads, sends over the internet and changes is written down. Nothing is sent or installed automatically.
-- **Tokens**: no model is used to scan files. A model is used only for translation (the lowest tier), and translations are saved so they are not repeated.
+- **Tokens**: no model is used to scan files. A model is used only for translation and for turning a search word that is not in English into an English one (the lowest tier), and translations are saved so they are not repeated.
 - **Careful actions**: deleting and moving go through a confirmation. The plugin cannot switch itself off. It checks once more right before deleting.
 - **Different setups on different PCs**: it finds your config folder even if it lives somewhere else (`CLAUDE_CONFIG_DIR`, another drive). The **Environment** tab shows what it read.
-- **Tests**: the safety, ranking and category rules have their own tests (75 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
+- **Tests**: the safety, ranking and category rules have their own tests (84 so far), and the safety rules were checked against all 3,700+ entries of the real directory.
 
 ## Quick start
 
@@ -239,7 +239,7 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 ## How many tokens does it use?
 
 - **The plugin itself adds nothing to the conversation (what the model reads).** The panel screen and the log never go to the model.
-- A model is called in only two cases: when translating descriptions into the chosen language (including when English descriptions are shown in Korean), and when turning a Korean search word that is not in the dictionary into an English search word. Both use the lowest tier (haiku), and translations are saved so they are not repeated. A model is not used to scan files.
+- A model is called in only two cases: when translating descriptions into the chosen language (including when English descriptions are shown in Korean), and when turning a `/ai-find` search word that is not written in English (Korean, Japanese, Chinese, Spanish ...) into an English search word. Both use the lowest tier (haiku), and translations are saved so they are not repeated. A model is not used to scan files.
 - **Other plugins you installed use tokens on their own.** The names and one-line descriptions of skills and subagents go to the AI on every turn. By a rough count from character counts (not real token counts), on the author's PC the descriptions of 9 plugins and 15 skills came to about 6,600 tokens per turn, and switching off the 3 biggest saved about 3,700 tokens. Switching off what you don't use is the surest saving.
 
 ## Cautions
