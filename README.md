@@ -293,7 +293,6 @@ These rules live in `hooks/trust.ts` and can be tested on their own, without Cla
 
 ## Known limitations
 
-
 - **Only checked on the Claude Code desktop app on Windows.** I have not checked Mac, Linux, the terminal or VS Code. The code has Mac and Linux branches but I have never run them.
 - It is for Claude Code only. Tools you use outside Claude Code cannot be detected automatically, so record them by hand with `/ai-log` if you need to.
 - **Suggestions depend on the plugin directory file stored on your PC (`plugin-directory-cache-v2.json`).** If the file is missing or renamed, it searches only the marketplaces you added. GitHub search works either way.
